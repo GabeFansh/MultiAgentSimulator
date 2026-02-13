@@ -88,4 +88,100 @@ classdef ScenarioModel < handle
             [dist, idx] = min(d);
         end
     end
+
+    methods
+    function stepRandomWalk(obj, dtSim)
+        % Agents do a random walk along edges between targets.
+        % dtSim is simulation seconds for this tick.
+
+        if isempty(obj.agents) || isempty(obj.targets) || isempty(obj.edges)
+            return;
+        end
+
+        A = obj.buildAdjacency();
+
+        for k = 1:numel(obj.agents)
+            a = obj.agents(k);
+
+            % If currently moving, advance toward nextTarget
+            if a.movementActive && ~isempty(a.nextTarget)
+                obj.advanceAgentToward(a, a.nextTarget, dtSim);
+                continue;
+            end
+
+            % If dwelling, count down
+            if a.dwellTime > 0
+                a.dwellTime = max(0, a.dwellTime - dtSim);
+                continue;
+            end
+
+            % Determine current target index
+            curIdx = a.current_target_idx;
+            if isempty(curIdx) || curIdx < 1 || curIdx > numel(obj.targets)
+                % fallback: snap to nearest target if close enough
+                [curIdx, dist] = obj.findNearestTarget(a.position);
+                if isempty(curIdx) || dist > 0.5
+                    continue;
+                end
+            end
+
+            % Choose random neighbor
+            nbrs = find(A(curIdx, :));
+            if isempty(nbrs)
+                continue;
+            end
+            nextIdx = nbrs(randi(numel(nbrs)));
+
+            % Start moving toward that target
+            a.nextTarget = obj.targets(nextIdx).position;
+            a.movementActive = true;
+
+            % IMPORTANT: set destination index so when it arrives it "knows" where it is
+            a.current_target_idx = nextIdx;
+        end
+    end
+end
+
+methods (Access=private)
+    function A = buildAdjacency(obj)
+        n = numel(obj.targets);
+        A = false(n,n);
+        for e = obj.edges
+            i = e.targets(1).index;
+            j = e.targets(2).index;
+            if i>=1 && i<=n && j>=1 && j<=n
+                A(i,j) = true;
+                A(j,i) = true;
+            end
+        end
+    end
+
+    function advanceAgentToward(~, a, destPos, dtSim)
+        % Move agent toward destPos by speed*dtSim.
+        delta = destPos - a.position;
+        dist = norm(delta);
+
+        if dist < 1e-9
+            % Arrived
+            a.position = destPos;
+            a.movementActive = false;
+            a.nextTarget = [];
+            a.dwellTime = 0.25 + 1.0*rand(); % random dwell (tweak as desired)
+            return;
+        end
+
+        step = a.speed * dtSim;
+        if step >= dist
+            a.position = destPos;
+            a.movementActive = false;
+            a.nextTarget = [];
+            a.dwellTime = 0.25 + 1.0*rand();
+        else
+            dir = delta / dist;
+            a.position = a.position + dir * step;
+            a.orientation = atan2(dir(2), dir(1));
+        end
+    end
+end
+
 end
