@@ -2,8 +2,8 @@ classdef SimulationClock < handle
     properties
         currentTime double = 0
         endTime double = 60
-        dt double = 0.05           % base simulation step (seconds)
-        timeScale double = 1.0     % multiplier
+        dt double = 0.05
+        timeScale double = 1.0
     end
 
     methods
@@ -33,9 +33,8 @@ classdef SimulationClock < handle
             obj.currentTime = obj.currentTime + dtSim;
         end
 
-
         function tf = isFinished(obj)
-            tf = obj.currentTime >= obj.endTime;
+            tf = obj.currentTime >= (obj.endTime - 1e-12);
         end
     end
 end

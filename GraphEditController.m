@@ -8,6 +8,15 @@ classdef GraphEditController < handle
 
         clickTol = 3.0
         statusCallback % function handle: @(msg) ...
+
+        % Grid snap settings
+        gridStep = 5
+
+        % Bounds (match your axes limits)
+        xMin = 0
+        xMax = 100
+        yMin = 0
+        yMax = 100
     end
 
     methods
@@ -25,8 +34,8 @@ classdef GraphEditController < handle
         end
 
         function clearAll(obj)
+            obj.renderer.clearAxes();  % delete bars/rectangles first
             obj.model.clearAll();
-            obj.renderer.clearAxes();
             obj.renderer.renderAll(obj.model);
             obj.setMode("idle");
         end
@@ -34,7 +43,9 @@ classdef GraphEditController < handle
         function onCanvasClick(obj, pos, agentSpeed)
             switch obj.mode
                 case "addTarget"
-                    obj.model.addTarget(pos);
+                    pos2 = obj.snapToGrid(pos, obj.gridStep);
+                    pos2 = obj.clampToBounds(pos2);
+                    obj.model.addTarget(pos2);
                     obj.renderer.renderAll(obj.model);
 
                 case "addAgent"
@@ -54,15 +65,18 @@ classdef GraphEditController < handle
         end
 
         function onCanvasMove(obj, pos)
-            % Update preview line if picking second target
             if obj.mode ~= "addEdge"
                 return;
             end
             if numel(obj.edgePick) ~= 1
                 return;
             end
+
+            pos2 = obj.snapToGrid(pos, obj.gridStep);
+            pos2 = obj.clampToBounds(pos2);
+
             p1 = obj.model.targets(obj.edgePick(1)).position;
-            obj.renderer.updateEdgePreview(p1, pos);
+            obj.renderer.updateEdgePreview(p1, pos2);
         end
     end
 
@@ -81,12 +95,16 @@ classdef GraphEditController < handle
                 return;
             end
 
-            obj.edgePick(end+1) = tIdx; 
+            obj.edgePick(end+1) = tIdx;
 
             if isscalar(obj.edgePick)
                 obj.say(sprintf("Picked T%d. Pick second target...", tIdx));
                 p1 = obj.model.targets(tIdx).position;
-                obj.renderer.updateEdgePreview(p1, pos);
+
+                pos2 = obj.snapToGrid(pos, obj.gridStep);
+                pos2 = obj.clampToBounds(pos2);
+
+                obj.renderer.updateEdgePreview(p1, pos2);
                 return;
             end
 
@@ -109,6 +127,15 @@ classdef GraphEditController < handle
             if ~isempty(obj.statusCallback)
                 obj.statusCallback(char(msg));
             end
+        end
+
+        function p = snapToGrid(~, p, step)
+            p = step * round(p ./ step);
+        end
+
+        function p = clampToBounds(obj, p)
+            p(1) = min(max(p(1), obj.xMin), obj.xMax);
+            p(2) = min(max(p(2), obj.yMin), obj.yMax);
         end
     end
 end

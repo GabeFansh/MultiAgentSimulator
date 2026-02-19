@@ -3,6 +3,16 @@ classdef ScenarioModel < handle
         agents  = Agent.empty
         targets = Target.empty
         edges   = Edge.empty
+
+        % Objective logging
+        timeHistory = []
+        uncertaintyHistory = []
+
+        % NEW: incremental integral for J(t) (exact trapezoid rule)
+        cumUncertaintyIntegral double = 0
+        lastLogTime double = 0
+        lastUncertainty double = 0
+        hasLastSample logical = false
     end
 
     methods
@@ -10,6 +20,39 @@ classdef ScenarioModel < handle
             obj.agents  = Agent.empty;
             obj.targets = Target.empty;
             obj.edges   = Edge.empty;
+
+            obj.timeHistory = [];
+            obj.uncertaintyHistory = [];
+
+            obj.cumUncertaintyIntegral = 0;
+            obj.lastLogTime = 0;
+            obj.lastUncertainty = 0;
+            obj.hasLastSample = false;
+        end
+
+        function resetSimulationState(obj)
+            % Reset objective logs
+            obj.timeHistory = [];
+            obj.uncertaintyHistory = [];
+
+            obj.cumUncertaintyIntegral = 0;
+            obj.lastLogTime = 0;
+            obj.lastUncertainty = 0;
+            obj.hasLastSample = false;
+
+            % Reset agents to initial placement
+            for k = 1:numel(obj.agents)
+                if ismethod(obj.agents(k), 'resetToInitial')
+                    obj.agents(k).resetToInitial();
+                end
+            end
+
+            % Reset targets if they implement reset()
+            for t = 1:numel(obj.targets)
+                if ismethod(obj.targets(t), 'reset')
+                    obj.targets(t).reset();
+                end
+            end
         end
 
         function t = addTarget(obj, pos)
@@ -39,6 +82,11 @@ classdef ScenarioModel < handle
 
             a = Agent(idx, snapPos, speed);
             a.current_target_idx = tIdx;
+
+            % Ensure initial state is correct
+            a.initialTargetIdx = tIdx;
+            a.initialPosition = snapPos;
+            a.initialOrientation = a.orientation;
 
             obj.agents(idx) = a;
             ok = true;
@@ -80,108 +128,144 @@ classdef ScenarioModel < handle
         function [idx, dist] = findNearestTarget(obj, pos)
             idx = [];
             dist = inf;
-            if isempty(obj.targets)
-                return;
-            end
+            if isempty(obj.targets), return; end
             P = reshape([obj.targets.position], 2, []).';
             d = hypot(P(:,1)-pos(1), P(:,2)-pos(2));
             [dist, idx] = min(d);
         end
-    end
 
-    methods
-    function stepRandomWalk(obj, dtSim)
-        % Agents do a random walk along edges between targets.
-        % dtSim is simulation seconds for this tick.
-
-        if isempty(obj.agents) || isempty(obj.targets) || isempty(obj.edges)
-            return;
-        end
-
-        A = obj.buildAdjacency();
-
-        for k = 1:numel(obj.agents)
-            a = obj.agents(k);
-
-            % If currently moving, advance toward nextTarget
-            if a.movementActive && ~isempty(a.nextTarget)
-                obj.advanceAgentToward(a, a.nextTarget, dtSim);
-                continue;
+        % ===== Simulation: Random walk (continuous movement) =====
+        function stepRandomWalk(obj, dtSim)
+            if isempty(obj.agents) || isempty(obj.targets) || isempty(obj.edges)
+                return;
             end
 
-            % If dwelling, count down
-            if a.dwellTime > 0
-                a.dwellTime = max(0, a.dwellTime - dtSim);
-                continue;
-            end
+            A = obj.buildAdjacency();
 
-            % Determine current target index
-            curIdx = a.current_target_idx;
-            if isempty(curIdx) || curIdx < 1 || curIdx > numel(obj.targets)
-                % fallback: snap to nearest target if close enough
-                [curIdx, dist] = obj.findNearestTarget(a.position);
-                if isempty(curIdx) || dist > 0.5
+            for k = 1:numel(obj.agents)
+                a = obj.agents(k);
+
+                if a.movementActive && ~isempty(a.nextTarget)
+                    obj.advanceAgentToward(a, a.nextTarget, dtSim);
                     continue;
                 end
-            end
 
-            % Choose random neighbor
-            nbrs = find(A(curIdx, :));
-            if isempty(nbrs)
-                continue;
-            end
-            nextIdx = nbrs(randi(numel(nbrs)));
+                if a.dwellTime > 0
+                    a.dwellTime = max(0, a.dwellTime - dtSim);
+                    continue;
+                end
 
-            % Start moving toward that target
-            a.nextTarget = obj.targets(nextIdx).position;
-            a.movementActive = true;
+                curIdx = a.current_target_idx;
+                if isempty(curIdx) || curIdx < 1 || curIdx > numel(obj.targets)
+                    [curIdx, dist] = obj.findNearestTarget(a.position);
+                    if isempty(curIdx) || dist > 0.5
+                        continue;
+                    end
+                end
 
-            % IMPORTANT: set destination index so when it arrives it "knows" where it is
-            a.current_target_idx = nextIdx;
-        end
-    end
-end
+                nbrs = find(A(curIdx, :));
+                if isempty(nbrs), continue; end
 
-methods (Access=private)
-    function A = buildAdjacency(obj)
-        n = numel(obj.targets);
-        A = false(n,n);
-        for e = obj.edges
-            i = e.targets(1).index;
-            j = e.targets(2).index;
-            if i>=1 && i<=n && j>=1 && j<=n
-                A(i,j) = true;
-                A(j,i) = true;
+                nextIdx = nbrs(randi(numel(nbrs)));
+
+                a.nextTarget = obj.targets(nextIdx).position;
+                a.movementActive = true;
+                a.current_target_idx = nextIdx;
             end
         end
+
+        % ===== Objective: accurate in fast-forward too =====
+        function [uNow, JNow] = updateTargetsAndLogObjective(obj, simTime, dtSim)
+            if isempty(obj.targets)
+                uNow = 0;
+                JNow = 0;
+                return;
+            end
+
+            % --- Update each target's residing agents + uncertainty ---
+            uNow = 0;
+            for t = 1:numel(obj.targets)
+                nearby = Agent.empty(0,0);
+                for a = 1:numel(obj.agents)
+                    if norm(obj.agents(a).position - obj.targets(t).position) < 0.1
+                        nearby(end+1) = obj.agents(a); %#ok<AGROW>
+                    end
+                end
+
+                obj.targets(t).updateResidingAgents(nearby, simTime);
+                obj.targets(t).updateUncertainty(dtSim);
+
+                uNow = uNow + obj.targets(t).R;
+            end
+
+            % --- Log history (optional but useful for plotting/debug) ---
+            obj.timeHistory(end+1) = simTime;
+            obj.uncertaintyHistory(end+1) = uNow;
+
+            % --- Incremental trapezoid integral for J(t) ---
+            if ~obj.hasLastSample
+                obj.lastLogTime = simTime;
+                obj.lastUncertainty = uNow;
+                obj.cumUncertaintyIntegral = 0;
+                obj.hasLastSample = true;
+                JNow = 0;
+                return;
+            end
+
+            dt = simTime - obj.lastLogTime;
+            if dt > 0
+                obj.cumUncertaintyIntegral = obj.cumUncertaintyIntegral + 0.5 * (obj.lastUncertainty + uNow) * dt;
+                obj.lastLogTime = simTime;
+                obj.lastUncertainty = uNow;
+            else
+                % no time advance (dt=0): do not change integral
+            end
+
+            if simTime <= 0
+                JNow = 0;
+            else
+                JNow = obj.cumUncertaintyIntegral / simTime;
+            end
+        end
     end
 
-    function advanceAgentToward(~, a, destPos, dtSim)
-        % Move agent toward destPos by speed*dtSim.
-        delta = destPos - a.position;
-        dist = norm(delta);
-
-        if dist < 1e-9
-            % Arrived
-            a.position = destPos;
-            a.movementActive = false;
-            a.nextTarget = [];
-            a.dwellTime = 0.25 + 1.0*rand(); % random dwell (tweak as desired)
-            return;
+    methods (Access=private)
+        function A = buildAdjacency(obj)
+            n = numel(obj.targets);
+            A = false(n,n);
+            for e = obj.edges
+                i = e.targets(1).index;
+                j = e.targets(2).index;
+                if i>=1 && i<=n && j>=1 && j<=n
+                    A(i,j) = true;
+                    A(j,i) = true;
+                end
+            end
         end
 
-        step = a.speed * dtSim;
-        if step >= dist
-            a.position = destPos;
-            a.movementActive = false;
-            a.nextTarget = [];
-            a.dwellTime = 0.25 + 1.0*rand();
-        else
-            dir = delta / dist;
-            a.position = a.position + dir * step;
-            a.orientation = atan2(dir(2), dir(1));
+        function advanceAgentToward(~, a, destPos, dtSim)
+            delta = destPos - a.position;
+            dist = norm(delta);
+
+            if dist < 1e-9
+                a.position = destPos;
+                a.movementActive = false;
+                a.nextTarget = [];
+                a.dwellTime = 0.25 + 1.0*rand();
+                return;
+            end
+
+            step = a.speed * dtSim;
+            if step >= dist
+                a.position = destPos;
+                a.movementActive = false;
+                a.nextTarget = [];
+                a.dwellTime = 0.25 + 1.0*rand();
+            else
+                dir = delta / dist;
+                a.position = a.position + dir * step;
+                a.orientation = atan2(dir(2), dir(1));
+            end
         end
     end
-end
-
 end

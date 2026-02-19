@@ -21,6 +21,11 @@ classdef MainUI < handle
 
         clock
         sim
+
+        objectiveWin
+
+        gridStep = 5;
+        snapTargets = true;
     end
 
     methods
@@ -31,10 +36,14 @@ classdef MainUI < handle
             obj.renderer = ScenarioRenderer(obj.ax);
             obj.controller = GraphEditController(obj.model, obj.renderer, @(m)obj.setStatus(m));
 
+            obj.objectiveWin = ObjectivePlotWindow();
+
             % Simulation
             obj.clock = SimulationClock(obj.endTimeField.Value, obj.dtField.Value);
             obj.sim = SimulationController(obj.model, obj.renderer, obj.clock, ...
-                @(t,tEnd)obj.setTime(t,tEnd), @(m)obj.setStatus(m));
+                @(t,tEnd)obj.setTime(t,tEnd), ...
+                @(m)obj.setStatus(m), ...
+                @(t,J)obj.objectiveWin.addPoint(t,J));
 
             % Mouse move for edge preview (after controller exists)
             obj.fig.WindowButtonMotionFcn = @(~,~)obj.safeOnMouseMove();
@@ -82,7 +91,7 @@ classdef MainUI < handle
             uibutton(p,'Text','Clear All','Position',[20 185 220 40], ...
                 'ButtonPushedFcn', @(~,~)obj.onClearAll());
 
-            % Agent speed (movement speed)
+            % Agent speed
             uilabel(p,'Text','Agent speed:','Position',[20 140 90 22]);
             obj.speedField = uieditfield(p,'numeric','Value',5,'Limits',[0.01 Inf], ...
                 'Position',[115 136 125 30]);
@@ -111,8 +120,9 @@ classdef MainUI < handle
             uibutton(tp,'Text','Run to End','Position',[20 115 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.sim.runToEnd());
 
+            % Reset time (restart same scenario)
             uibutton(tp,'Text','Reset Time','Position',[20 80 220 30], ...
-                'ButtonPushedFcn', @(~,~)obj.sim.reset());
+                'ButtonPushedFcn', @(~,~)obj.onResetSimulation());
 
             uilabel(tp,'Text','End time:','Position',[20 52 60 22]);
             obj.endTimeField = uieditfield(tp,'numeric','Value',60,'Limits',[0 Inf], ...
@@ -131,16 +141,45 @@ classdef MainUI < handle
                 'ValueChangedFcn', @(s,~)obj.sim.setTimeScale(s.Value));
         end
 
-        function onClearAll(obj)
+        function onResetSimulation(obj)
+            % Reset plot
+            if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
+                obj.objectiveWin.reset();
+                obj.objectiveWin.addPoint(0,0);
+            end
+
+            % Reset sim (keeps scenario, resets time + agent positions + target uncertainty)
             if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
-                obj.sim.pause();
                 obj.sim.reset();
             end
-            if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
-                return;
+            obj.setStatus('Reset simulation + objective plot.');
+        end
+
+        function onClearAll(obj)
+            % Clear All = wipe scenario completely.
+            % 1) Stop timer first so it can't redraw after we clear.
+            if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
+                obj.sim.pause();
             end
-            obj.controller.clearAll();
-            obj.setStatus('Cleared.');
+
+            % 2) Clear model + axes via controller (this removes bars)
+            if ~isempty(obj.controller) && isa(obj.controller,'GraphEditController')
+                obj.controller.clearAll();
+            end
+
+            % 3) Reset plot window
+            if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
+                obj.objectiveWin.reset();
+                obj.objectiveWin.addPoint(0,0);
+            end
+
+            % 4) Reset clock display to 0 (optional but feels right)
+            if ~isempty(obj.clock)
+                obj.clock.reset();
+                obj.setTime(0, obj.clock.endTime);
+            end
+
+            obj.setStatus('Cleared everything.');
         end
 
         function setMode(obj, m)
@@ -169,7 +208,7 @@ classdef MainUI < handle
             cp = ax.CurrentPoint;
             pos = [cp(1,1) cp(1,2)];
 
-            % Update all agents' speeds from UI field (simple approach)
+            % Update all agents' speeds from UI field
             if ~isempty(obj.model) && ~isempty(obj.model.agents)
                 for k = 1:numel(obj.model.agents)
                     obj.model.agents(k).speed = obj.speedField.Value;
