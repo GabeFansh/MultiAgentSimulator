@@ -91,16 +91,23 @@ classdef MainUI < handle
             uibutton(p,'Text','Clear All','Position',[20 185 220 40], ...
                 'ButtonPushedFcn', @(~,~)obj.onClearAll());
 
+            % NEW: Layout save/load
+            uibutton(p,'Text','Save Layout...','Position',[20 145 105 32], ...
+                'ButtonPushedFcn', @(~,~)obj.onSaveLayout());
+
+            uibutton(p,'Text','Load Layout...','Position',[135 145 105 32], ...
+                'ButtonPushedFcn', @(~,~)obj.onLoadLayout());
+
             % Agent speed
-            uilabel(p,'Text','Agent speed:','Position',[20 140 90 22]);
+            uilabel(p,'Text','Agent speed:','Position',[20 115 90 22]);
             obj.speedField = uieditfield(p,'numeric','Value',5,'Limits',[0.01 Inf], ...
-                'Position',[115 136 125 30]);
+                'Position',[115 111 125 30]);
 
             obj.modeLabel = uilabel(p,'Text','Mode: idle', ...
-                'Position',[20 100 220 26], 'FontWeight','bold');
+                'Position',[20 82 220 26], 'FontWeight','bold');
 
             obj.statusLabel = uilabel(p,'Text','', ...
-                'Position',[20 20 220 80], 'WordWrap','on');
+                'Position',[20 10 220 70], 'WordWrap','on');
 
             % Canvas click callback
             obj.ax.PickableParts = 'all';
@@ -141,6 +148,84 @@ classdef MainUI < handle
                 'ValueChangedFcn', @(s,~)obj.sim.setTimeScale(s.Value));
         end
 
+        function onSaveLayout(obj)
+            if isempty(obj.model) || ~isa(obj.model,'ScenarioModel') || ~ismethod(obj.model,'exportLayout')
+                obj.setStatus("ScenarioModel.exportLayout() not found.");
+                return;
+            end
+
+            s = obj.model.exportLayout();
+
+            [f,d] = uiputfile('*.mat','Save layout as');
+            if isequal(f,0)
+                obj.setStatus("Save cancelled.");
+                return;
+            end
+
+            try
+                save(fullfile(d,f), 's');
+                obj.setStatus("Saved layout: " + string(fullfile(d,f)));
+            catch ME
+                obj.setStatus("Save failed: " + string(ME.message));
+            end
+        end
+
+        function onLoadLayout(obj)
+            if isempty(obj.model) || ~isa(obj.model,'ScenarioModel') || ~ismethod(obj.model,'importLayout')
+                obj.setStatus("ScenarioModel.importLayout() not found.");
+                return;
+            end
+
+            [f,d] = uigetfile('*.mat','Load layout');
+            if isequal(f,0)
+                obj.setStatus("Load cancelled.");
+                return;
+            end
+
+            try
+                tmp = load(fullfile(d,f), 's');
+                if ~isfield(tmp,'s')
+                    obj.setStatus("Selected file does not contain variable 's'.");
+                    return;
+                end
+
+                % stop simulation first
+                if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
+                    obj.sim.pause();
+                end
+
+                % import scenario
+                obj.model.importLayout(tmp.s);
+
+                % refresh visuals
+                if ~isempty(obj.renderer) && isa(obj.renderer,'ScenarioRenderer')
+                    obj.renderer.clearAxes();
+                    obj.renderer.renderAll(obj.model);
+                end
+
+                % reset plot + simulation time/state
+                if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
+                    obj.objectiveWin.reset();
+                    obj.objectiveWin.addPoint(0,0);
+                end
+
+                if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
+                    obj.sim.reset();
+                else
+                    if ~isempty(obj.clock)
+                        obj.clock.reset();
+                        obj.setTime(0, obj.clock.endTime);
+                    end
+                end
+
+                obj.controller.setMode("idle");
+                obj.setStatus("Loaded layout: " + string(fullfile(d,f)));
+
+            catch ME
+                obj.setStatus("Load failed: " + string(ME.message));
+            end
+        end
+
         function onResetSimulation(obj)
             % Reset plot
             if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
@@ -157,23 +242,19 @@ classdef MainUI < handle
 
         function onClearAll(obj)
             % Clear All = wipe scenario completely.
-            % 1) Stop timer first so it can't redraw after we clear.
             if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
                 obj.sim.pause();
             end
 
-            % 2) Clear model + axes via controller (this removes bars)
             if ~isempty(obj.controller) && isa(obj.controller,'GraphEditController')
                 obj.controller.clearAll();
             end
 
-            % 3) Reset plot window
             if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
                 obj.objectiveWin.reset();
                 obj.objectiveWin.addPoint(0,0);
             end
 
-            % 4) Reset clock display to 0 (optional but feels right)
             if ~isempty(obj.clock)
                 obj.clock.reset();
                 obj.setTime(0, obj.clock.endTime);

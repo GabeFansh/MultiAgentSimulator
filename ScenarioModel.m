@@ -8,7 +8,7 @@ classdef ScenarioModel < handle
         timeHistory = []
         uncertaintyHistory = []
 
-        % NEW: incremental integral for J(t) (exact trapezoid rule)
+        % incremental integral for J(t)
         cumUncertaintyIntegral double = 0
         lastLogTime double = 0
         lastUncertainty double = 0
@@ -84,9 +84,9 @@ classdef ScenarioModel < handle
             a.current_target_idx = tIdx;
 
             % Ensure initial state is correct
-            a.initialTargetIdx = tIdx;
-            a.initialPosition = snapPos;
-            a.initialOrientation = a.orientation;
+            if isprop(a,'initialTargetIdx'), a.initialTargetIdx = tIdx; end
+            if isprop(a,'initialPosition'), a.initialPosition = snapPos; end
+            if isprop(a,'initialOrientation'), a.initialOrientation = a.orientation; end
 
             obj.agents(idx) = a;
             ok = true;
@@ -182,7 +182,6 @@ classdef ScenarioModel < handle
                 return;
             end
 
-            % --- Update each target's residing agents + uncertainty ---
             uNow = 0;
             for t = 1:numel(obj.targets)
                 nearby = Agent.empty(0,0);
@@ -198,11 +197,9 @@ classdef ScenarioModel < handle
                 uNow = uNow + obj.targets(t).R;
             end
 
-            % --- Log history (optional but useful for plotting/debug) ---
             obj.timeHistory(end+1) = simTime;
             obj.uncertaintyHistory(end+1) = uNow;
 
-            % --- Incremental trapezoid integral for J(t) ---
             if ~obj.hasLastSample
                 obj.lastLogTime = simTime;
                 obj.lastUncertainty = uNow;
@@ -217,8 +214,6 @@ classdef ScenarioModel < handle
                 obj.cumUncertaintyIntegral = obj.cumUncertaintyIntegral + 0.5 * (obj.lastUncertainty + uNow) * dt;
                 obj.lastLogTime = simTime;
                 obj.lastUncertainty = uNow;
-            else
-                % no time advance (dt=0): do not change integral
             end
 
             if simTime <= 0
@@ -226,6 +221,115 @@ classdef ScenarioModel < handle
             else
                 JNow = obj.cumUncertaintyIntegral / simTime;
             end
+        end
+
+        % =======================
+        % Layout Save / Load API
+        % =======================
+        function s = exportLayout(obj)
+            s = struct();
+            s.version = 1;
+            s.createdAt = char(datetime('now'));
+
+            % Targets
+            nT = numel(obj.targets);
+            s.targets = repmat(struct('index',[],'position',[],'A',[],'B',[],'R',[]), 1, nT);
+            for i = 1:nT
+                t = obj.targets(i);
+                s.targets(i).index = t.index;
+                s.targets(i).position = t.position;
+
+                if isprop(t,'A'), s.targets(i).A = t.A; end
+                if isprop(t,'B'), s.targets(i).B = t.B; end
+                if isprop(t,'R'), s.targets(i).R = t.R; end
+            end
+
+            % Edges (by target indices)
+            nE = numel(obj.edges);
+            s.edges = repmat(struct('i',[],'j',[]), 1, nE);
+            for k = 1:nE
+                e = obj.edges(k);
+                s.edges(k).i = e.targets(1).index;
+                s.edges(k).j = e.targets(2).index;
+            end
+
+            % Agents
+            nA = numel(obj.agents);
+            s.agents = repmat(struct('index',[],'initialTargetIdx',[],'initialPosition',[],'speed',[]), 1, nA);
+            for i = 1:nA
+                a = obj.agents(i);
+                s.agents(i).index = a.index;
+
+                if isprop(a,'initialTargetIdx') && ~isempty(a.initialTargetIdx)
+                    s.agents(i).initialTargetIdx = a.initialTargetIdx;
+                else
+                    s.agents(i).initialTargetIdx = a.current_target_idx;
+                end
+
+                if isprop(a,'initialPosition') && ~isempty(a.initialPosition)
+                    s.agents(i).initialPosition = a.initialPosition;
+                else
+                    s.agents(i).initialPosition = a.position;
+                end
+
+                s.agents(i).speed = a.speed;
+            end
+        end
+
+        function importLayout(obj, s)
+            % Rebuild everything from layout struct
+            obj.clearAll();
+
+            % Targets
+            for i = 1:numel(s.targets)
+                tt = s.targets(i);
+                t = obj.addTarget(tt.position);
+
+                % Keep index consistent if user saved it
+                t.index = tt.index;
+
+                if isfield(tt,'A') && ~isempty(tt.A) && isprop(t,'A'), t.A = tt.A; end
+                if isfield(tt,'B') && ~isempty(tt.B) && isprop(t,'B'), t.B = tt.B; end
+
+                if isfield(tt,'R') && ~isempty(tt.R) && isprop(t,'R')
+                    t.R = tt.R;                   
+                end
+            end
+
+            % Edges
+            for k = 1:numel(s.edges)
+                obj.addEdgeByTargets(s.edges(k).i, s.edges(k).j);
+            end
+
+            % Agents
+            for i = 1:numel(s.agents)
+                aa = s.agents(i);
+                idx = numel(obj.agents) + 1;
+
+                pos = aa.initialPosition;
+                tIdx = aa.initialTargetIdx;
+
+                if ~isempty(tIdx) && tIdx >= 1 && tIdx <= numel(obj.targets)
+                    pos = obj.targets(tIdx).position;
+                end
+
+                a = Agent(idx, pos, aa.speed);
+                a.current_target_idx = tIdx;
+
+                if isprop(a,'initialTargetIdx'), a.initialTargetIdx = tIdx; end
+                if isprop(a,'initialPosition'), a.initialPosition = pos; end
+                if isprop(a,'initialOrientation'), a.initialOrientation = a.orientation; end
+
+                obj.agents(idx) = a;
+            end
+
+            % Reset objective integrator
+            obj.timeHistory = [];
+            obj.uncertaintyHistory = [];
+            obj.cumUncertaintyIntegral = 0;
+            obj.lastLogTime = 0;
+            obj.lastUncertainty = 0;
+            obj.hasLastSample = false;
         end
     end
 

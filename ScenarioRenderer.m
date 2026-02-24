@@ -17,7 +17,6 @@ classdef ScenarioRenderer < handle
         end
 
         function clearAxes(obj)
-            % HARD CLEAR: delete everything drawn on this axes (rectangles included)
             try
                 delete(allchild(obj.ax));
             catch
