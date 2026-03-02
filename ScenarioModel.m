@@ -100,7 +100,7 @@ classdef ScenarioModel < handle
 
         function [idx, dist] = findNearestTarget(obj, pos)
             idx = []; dist = inf; if isempty(obj.targets), return; end
-            P = reshape([obj.targets.position], 2, []).;
+            P = reshape([obj.targets.position], 2, []);
             d = hypot(P(:,1)-pos(1), P(:,2)-pos(2)); [dist, idx] = min(d);
         end
 
