@@ -2,7 +2,7 @@ classdef ScenarioRenderer < handle
     properties
         ax
 
-        % Edge preview line (dashed)
+        % Edge preview line 
         edgePreviewLine
     end
 
@@ -20,7 +20,6 @@ classdef ScenarioRenderer < handle
             try
                 delete(allchild(obj.ax));
             catch
-                % Fallback if something goes wrong
                 cla(obj.ax,'reset');
             end
 

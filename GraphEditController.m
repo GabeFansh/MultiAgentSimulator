@@ -7,12 +7,12 @@ classdef GraphEditController < handle
         edgePick = []      % picked target indices
 
         clickTol = 3.0
-        statusCallback % function handle: @(msg) ...
+        statusCallback 
 
         % Grid snap settings
         gridStep = 5
 
-        % Bounds (match your axes limits)
+        % Bounds 
         xMin = 0
         xMax = 100
         yMin = 0

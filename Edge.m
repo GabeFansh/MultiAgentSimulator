@@ -2,7 +2,7 @@ classdef Edge < handle
     properties
         index
         targets % [target1, target2]
-        length
+        curvePoints % Nx2 matrix for the actual curve
         lineHandle
     end
     
@@ -10,15 +10,25 @@ classdef Edge < handle
         function obj = Edge(index, targetPair)
             obj.index = index;
             obj.targets = targetPair;
-            obj.length = 0;
-            obj.lineHandle = [];
+            obj.generateCurve();
+        end
+        
+        function generateCurve(obj)
+            p1 = obj.targets(1).position;
+            p2 = obj.targets(2).position;
+            
+            mid = (p1 + p2) / 2;
+            perp = [-(p2(2)-p1(2)), (p2(1)-p1(1))];
+            controlPoint = mid + 0.2 * perp; 
+            
+            t = linspace(0, 1, 20)';
+            % Quadratic Bezier
+            obj.curvePoints = (1-t).^2 * p1 + 2*(1-t).*t * controlPoint + t.^2 * p2;
         end
         
         function draw(obj, ax)
-            p1 = obj.targets(1).position;
-            p2 = obj.targets(2).position;
-            obj.length = norm(p2 - p1); 
-            obj.lineHandle = plot(ax, [p1(1) p2(1)], [p1(2) p2(2)], 'k-', 'LineWidth', 1.5);
+            obj.lineHandle = plot(ax, obj.curvePoints(:,1), obj.curvePoints(:,2), ...
+                'k-', 'LineWidth', 1, 'Color', [0.5 0.5 0.5]);
         end
     end
 end

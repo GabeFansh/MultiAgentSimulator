@@ -45,7 +45,7 @@ classdef MainUI < handle
                 @(m)obj.setStatus(m), ...
                 @(t,J)obj.objectiveWin.addPoint(t,J));
 
-            % Mouse move for edge preview (after controller exists)
+            % Mouse move for edge preview 
             obj.fig.WindowButtonMotionFcn = @(~,~)obj.safeOnMouseMove();
 
             obj.controller.setMode("idle");
@@ -99,7 +99,7 @@ classdef MainUI < handle
                 'ButtonPushedFcn', @(~,~)obj.onLoadLayout());
 
             % Agent speed
-            uilabel(p,'Text','Agent speed:','Position',[20 115 90 22]);
+            uilabel(p,'Text','Agent Acceleration:','Position',[20 140 90 22]);
             obj.speedField = uieditfield(p,'numeric','Value',5,'Limits',[0.01 Inf], ...
                 'Position',[115 111 125 30]);
 
@@ -127,7 +127,7 @@ classdef MainUI < handle
             uibutton(tp,'Text','Run to End','Position',[20 115 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.sim.runToEnd());
 
-            % Reset time (restart same scenario)
+            % Reset time 
             uibutton(tp,'Text','Reset Time','Position',[20 80 220 30], ...
                 'ButtonPushedFcn', @(~,~)obj.onResetSimulation());
 
@@ -233,7 +233,7 @@ classdef MainUI < handle
                 obj.objectiveWin.addPoint(0,0);
             end
 
-            % Reset sim (keeps scenario, resets time + agent positions + target uncertainty)
+            % Reset sim 
             if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
                 obj.sim.reset();
             end
@@ -283,21 +283,13 @@ classdef MainUI < handle
         end
 
         function onAxesClick(obj, ax)
-            if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
-                return;
-            end
-            cp = ax.CurrentPoint;
-            pos = [cp(1,1) cp(1,2)];
-
-            % Update all agents' speeds from UI field
-            if ~isempty(obj.model) && ~isempty(obj.model.agents)
-                for k = 1:numel(obj.model.agents)
-                    obj.model.agents(k).speed = obj.speedField.Value;
-                end
-            end
-
-            obj.controller.onCanvasClick(pos, obj.speedField.Value);
-        end
+    if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
+        return;
+    end
+    cp = ax.CurrentPoint;
+    pos = [cp(1,1) cp(1,2)];
+    obj.controller.onCanvasClick(pos, obj.speedField.Value);
+end
 
         function safeOnMouseMove(obj)
             if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
