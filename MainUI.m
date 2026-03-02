@@ -45,7 +45,7 @@ classdef MainUI < handle
                 @(m)obj.setStatus(m), ...
                 @(t,J)obj.objectiveWin.addPoint(t,J));
 
-            % Mouse move for edge preview 
+            % Mouse move for edge preview
             obj.fig.WindowButtonMotionFcn = @(~,~)obj.safeOnMouseMove();
 
             obj.controller.setMode("idle");
@@ -76,38 +76,34 @@ classdef MainUI < handle
             title(obj.ax,'Click to add targets/agents/edges');
 
             % ----- Tools buttons -----
+            % Top buttons remain at their standard spacing
             uibutton(p,'Text','Add Target','Position',[20 380 220 42], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("addTarget"));
-
             uibutton(p,'Text','Add Agent (on target)','Position',[20 330 220 42], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("addAgent"));
-
             uibutton(p,'Text','Add Edge (pick 2 targets)','Position',[20 280 220 42], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("addEdge"));
-
             uibutton(p,'Text','Idle','Position',[20 235 220 36], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("idle"));
-
             uibutton(p,'Text','Clear All','Position',[20 185 220 40], ...
                 'ButtonPushedFcn', @(~,~)obj.onClearAll());
 
-            % NEW: Layout save/load
+            % Layout save/load
             uibutton(p,'Text','Save Layout...','Position',[20 145 105 32], ...
                 'ButtonPushedFcn', @(~,~)obj.onSaveLayout());
-
             uibutton(p,'Text','Load Layout...','Position',[135 145 105 32], ...
                 'ButtonPushedFcn', @(~,~)obj.onLoadLayout());
 
-            % Agent speed
-            uilabel(p,'Text','Agent Acceleration:','Position',[20 140 90 22]);
-            obj.speedField = uieditfield(p,'numeric','Value',5,'Limits',[0.01 Inf], ...
-                'Position',[115 111 125 30]);
+            % Agent acceleration
+            uilabel(p,'Text','Agent Accel:','Position',[20 110 90 22]);
+            obj.speedField = uieditfield(p,'numeric','Value',15,'Limits',[0.01 Inf], ...
+                'Position',[115 106 125 30]);
 
+            % Mode and Status labels 
             obj.modeLabel = uilabel(p,'Text','Mode: idle', ...
-                'Position',[20 82 220 26], 'FontWeight','bold');
-
+                'Position',[20 75 220 26], 'FontWeight','bold');
             obj.statusLabel = uilabel(p,'Text','', ...
-                'Position',[20 10 220 70], 'WordWrap','on');
+                'Position',[20 10 220 60], 'WordWrap','on');
 
             % Canvas click callback
             obj.ax.PickableParts = 'all';
@@ -127,7 +123,7 @@ classdef MainUI < handle
             uibutton(tp,'Text','Run to End','Position',[20 115 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.sim.runToEnd());
 
-            % Reset time 
+            % Reset time
             uibutton(tp,'Text','Reset Time','Position',[20 80 220 30], ...
                 'ButtonPushedFcn', @(~,~)obj.onResetSimulation());
 
@@ -233,7 +229,7 @@ classdef MainUI < handle
                 obj.objectiveWin.addPoint(0,0);
             end
 
-            % Reset sim 
+            % Reset sim
             if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
                 obj.sim.reset();
             end
@@ -283,13 +279,13 @@ classdef MainUI < handle
         end
 
         function onAxesClick(obj, ax)
-    if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
-        return;
-    end
-    cp = ax.CurrentPoint;
-    pos = [cp(1,1) cp(1,2)];
-    obj.controller.onCanvasClick(pos, obj.speedField.Value);
-end
+            if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
+                return;
+            end
+            cp = ax.CurrentPoint;
+            pos = [cp(1,1) cp(1,2)];
+            obj.controller.onCanvasClick(pos, obj.speedField.Value);
+        end
 
         function safeOnMouseMove(obj)
             if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')

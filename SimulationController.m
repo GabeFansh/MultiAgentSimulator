@@ -36,6 +36,16 @@ classdef SimulationController < handle
             obj.clock.timeScale = max(0, s);
         end
 
+        function reset(obj) 
+            obj.pause();
+            obj.clock.reset();
+            if ismethod(obj.model, 'resetSimulationState')
+                obj.model.resetSimulationState();
+            end
+            obj.renderer.renderAll(obj.model);
+            if ~isempty(obj.timeCallback), obj.timeCallback(0, obj.clock.endTime); end
+        end
+
         function runToEnd(obj) 
             obj.pause();
             while ~obj.clock.isFinished()
