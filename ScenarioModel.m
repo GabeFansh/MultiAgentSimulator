@@ -17,12 +17,12 @@ classdef ScenarioModel < handle
             obj.policyMap('Default') = RandomWalkPolicy();
         end
 
-        function t = addTarget(obj, pos) 
+        function t = addTarget(obj, pos) % RESTORED
             t = Target(numel(obj.targets) + 1, pos);
             obj.targets(end+1) = t;
         end
 
-        function [e, ok, msg] = addEdgeByTargets(obj, t1Idx, t2Idx) 
+        function [e, ok, msg] = addEdgeByTargets(obj, t1Idx, t2Idx) % RESTORED
             e = Edge.empty; ok = false; msg = "";
             if t1Idx == t2Idx, msg = "Cannot connect to self."; return; end
             idx = numel(obj.edges) + 1;
@@ -30,7 +30,7 @@ classdef ScenarioModel < handle
             obj.edges(end+1) = e; ok = true;
         end
 
-        function [a, ok, msg] = addAgentOnTarget(obj, clickPos, speed, tol) 
+        function [a, ok, msg] = addAgentOnTarget(obj, clickPos, speed, tol) % RESTORED
             a = Agent.empty; ok = false; msg = "";
             [tIdx, dist] = obj.findNearestTarget(clickPos);
             if isempty(tIdx) || dist > tol, msg = "Click near target"; return; end
@@ -41,7 +41,7 @@ classdef ScenarioModel < handle
             obj.agents(end+1) = a; ok = true;
         end
 
-        function clearAll(obj) 
+        function clearAll(obj) % RESTORED
             obj.agents = Agent.empty; obj.targets = Target.empty; obj.edges = Edge.empty;
             obj.cumUncertaintyIntegral = 0; obj.hasLastSample = false;
         end
@@ -100,7 +100,7 @@ classdef ScenarioModel < handle
 
         function [idx, dist] = findNearestTarget(obj, pos)
             idx = []; dist = inf; if isempty(obj.targets), return; end
-            P = reshape([obj.targets.position], 2, []);
+            P = reshape([obj.targets.position], 2, []).';
             d = hypot(P(:,1)-pos(1), P(:,2)-pos(2)); [dist, idx] = min(d);
         end
 
