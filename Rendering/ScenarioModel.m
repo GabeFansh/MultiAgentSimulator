@@ -58,7 +58,7 @@ classdef ScenarioModel < handle
             if nargin > 4 && strcmpi(type, "Energy")
                 a = EnergyAgent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
             else
-                a = Agent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
+                a = DefaultAgent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
             end
             
             a.current_target_idx = tIdx;

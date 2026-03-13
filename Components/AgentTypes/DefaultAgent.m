@@ -1,4 +1,4 @@
-classdef Agent < handle
+classdef DefaultAgent < handle
     properties
         index
         position double = [0 0]
@@ -27,7 +27,7 @@ classdef Agent < handle
     end
 
     methods
-        function obj = Agent(index, position, maxSpeed)
+        function obj = DefaultAgent(index, position, maxSpeed)
             obj.index = index;
             obj.position = position;
             obj.maxSpeed = maxSpeed;
