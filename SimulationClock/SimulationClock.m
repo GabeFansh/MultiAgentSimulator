@@ -2,7 +2,7 @@ classdef SimulationClock < handle
     properties
         currentTime double = 0
         endTime double = 60
-        dt double = 0.05
+        dt double = 0.01  % Fixed stable delta (e.g., 10ms)
         timeScale double = 1.0
     end
 
@@ -16,8 +16,9 @@ classdef SimulationClock < handle
             obj.currentTime = 0;
         end
 
+        % We remove the multiplication here to keep physics stable
         function dtSim = tick(obj)
-            dtSim = obj.dt * obj.timeScale;
+            dtSim = obj.dt; 
 
             remaining = obj.endTime - obj.currentTime;
             if remaining <= 0

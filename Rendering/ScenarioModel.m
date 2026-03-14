@@ -1,13 +1,13 @@
 classdef ScenarioModel < handle
     properties
-        agents = [] 
+        agents = []
         targets = Target.empty
         edges = Edge.empty
-        cumUncertaintyIntegral = 0 
-        lastLogTime = 0 
-        lastUncertainty = 0 
+        cumUncertaintyIntegral = 0
+        lastLogTime = 0
+        lastUncertainty = 0
         hasLastSample = false
-        policyMap 
+        policyMap
         motionModel
     end
 
@@ -16,6 +16,7 @@ classdef ScenarioModel < handle
             obj.motionModel = SecondOrderMotionModel();
             obj.policyMap = containers.Map('KeyType','char','ValueType','any');
             obj.policyMap('Default') = RandomWalkPolicy();
+            obj.policyMap('Energy') = BatteryEfficientPolicy();
         end
 
         function s = exportLayout(obj)
@@ -54,41 +55,41 @@ classdef ScenarioModel < handle
             a = []; ok = false; msg = "";
             [tIdx, dist] = obj.findNearestTarget(clickPos);
             if isempty(tIdx) || dist > tol, msg = "Click near target"; return; end
-            
+
             if nargin > 4 && strcmpi(type, "Energy")
                 a = EnergyAgent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
             else
                 a = DefaultAgent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
             end
-            
+
             a.current_target_idx = tIdx;
-            a.initialTargetIdx = tIdx; 
+            a.initialTargetIdx = tIdx;
             a.initialPosition = a.position;
-            
+
             if isempty(obj.agents)
                 obj.agents = a;
             else
-                obj.agents(end+1) = a; 
+                obj.agents(end+1) = a;
             end
             ok = true;
         end
 
         function clearAll(obj)
-            obj.agents = []; 
-            obj.targets = Target.empty; 
+            obj.agents = [];
+            obj.targets = Target.empty;
             obj.edges = Edge.empty;
-            obj.cumUncertaintyIntegral = 0; 
+            obj.cumUncertaintyIntegral = 0;
             obj.hasLastSample = false;
         end
 
         function resetSimulationState(obj)
-            obj.cumUncertaintyIntegral = 0; 
+            obj.cumUncertaintyIntegral = 0;
             obj.hasLastSample = false;
             for k = 1:numel(obj.agents)
-                obj.agents(k).resetToInitial(); 
+                obj.agents(k).resetToInitial();
             end
             for t = 1:numel(obj.targets)
-                obj.targets(t).reset(); 
+                obj.targets(t).reset();
             end
         end
 
@@ -97,14 +98,14 @@ classdef ScenarioModel < handle
             for k = 1:numel(obj.agents)
                 a = obj.agents(k);
                 if isprop(a, 'dwellRemaining') && a.dwellRemaining > 0
-                    a.dwellRemaining = max(0, a.dwellRemaining - dtSim); 
-                    continue; 
+                    a.dwellRemaining = max(0, a.dwellRemaining - dtSim);
+                    continue;
                 end
-                
+
                 if ~isempty(a.path)
                     if obj.motionModel.step(a, dtSim)
-                        a.path = []; 
-                        a.dwellRemaining = 0.5 + rand(); 
+                        a.path = [];
+                        a.dwellRemaining = 0.5 + rand();
                     end
                 else
                     pol = obj.getPolicyForAgent(a);
@@ -114,9 +115,9 @@ classdef ScenarioModel < handle
                         if ~isempty(edge)
                             a.path = edge.curvePoints;
                             if edge.targets(1).index ~= a.current_target_idx
-                                a.path = flipud(a.path); 
+                                a.path = flipud(a.path);
                             end
-                            a.pathIndex = 1; 
+                            a.pathIndex = 1;
                             a.current_target_idx = cmd.targetIdx;
                         end
                     end
@@ -126,11 +127,12 @@ classdef ScenarioModel < handle
 
         function [uNow, JNow] = updateTargetsAndLogObjective(obj, simTime, dtSim)
             uNow = 0;
+            detectionRadius = 1.0;
             for t = 1:numel(obj.targets)
                 nearby = [];
                 for a_idx = 1:numel(obj.agents)
                     a = obj.agents(a_idx);
-                    if norm(a.position - obj.targets(t).position) < 0.6
+                    if norm(a.position - obj.targets(t).position) < detectionRadius
                         if isempty(nearby)
                             nearby = a;
                         else
@@ -142,16 +144,16 @@ classdef ScenarioModel < handle
                 obj.targets(t).updateUncertainty(dtSim);
                 uNow = uNow + obj.targets(t).R;
             end
-            
+
             if ~obj.hasLastSample
-                obj.lastLogTime = simTime; 
-                obj.lastUncertainty = uNow; 
+                obj.lastLogTime = simTime;
+                obj.lastUncertainty = uNow;
                 obj.hasLastSample = true;
             else
                 dt = simTime - obj.lastLogTime;
                 if dt > 0
                     obj.cumUncertaintyIntegral = obj.cumUncertaintyIntegral + 0.5 * (obj.lastUncertainty + uNow) * dt;
-                    obj.lastLogTime = simTime; 
+                    obj.lastLogTime = simTime;
                     obj.lastUncertainty = uNow;
                 end
             end
@@ -159,19 +161,19 @@ classdef ScenarioModel < handle
         end
 
         function [idx, dist] = findNearestTarget(obj, pos)
-            idx = []; dist = inf; 
+            idx = []; dist = inf;
             if isempty(obj.targets), return; end
             P = reshape([obj.targets.position], 2, []).';
-            d = hypot(P(:,1)-pos(1), P(:,2)-pos(2)); 
+            d = hypot(P(:,1)-pos(1), P(:,2)-pos(2));
             [dist, idx] = min(d);
         end
 
         function adj = buildAdjacency(obj)
-            n = numel(obj.targets); 
+            n = numel(obj.targets);
             adj = false(n,n);
             for k = 1:numel(obj.edges)
                 e = obj.edges(k);
-                i = e.targets(1).index; 
+                i = e.targets(1).index;
                 j = e.targets(2).index;
                 if i>=1 && i<=n && j>=1 && j<=n, adj(i,j)=true; adj(j,i)=true; end
             end
@@ -184,12 +186,12 @@ classdef ScenarioModel < handle
                 if all(ismember([t1, t2], ids)), e = obj.edges(k); return; end
             end
         end
-        
+
         function pol = getPolicyForAgent(obj, a)
             if isprop(a, 'type') && obj.policyMap.isKey(a.type)
                 pol = obj.policyMap(a.type);
             else
-                pol = obj.policyMap('Default'); 
+                pol = obj.policyMap('Default');
             end
         end
     end

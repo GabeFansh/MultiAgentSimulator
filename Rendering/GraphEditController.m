@@ -49,7 +49,12 @@ classdef GraphEditController < handle
                     obj.renderer.renderAll(obj.model);
 
                 case "addAgent"
-                    [~, ok, msg] = obj.model.addAgentOnTarget(pos, agentSpeed, obj.clickTol);
+                    % -----------------------------------------------
+                    % Change "Energy" to "Default" to use standard agents
+                    selectedType = "Energy"; 
+                    % -----------------------------------------------
+                    
+                    [~, ok, msg] = obj.model.addAgentOnTarget(pos, agentSpeed, obj.clickTol, selectedType);
                     if ~ok && msg ~= ""
                         obj.say(msg);
                         return;
@@ -58,9 +63,6 @@ classdef GraphEditController < handle
 
                 case "addEdge"
                     obj.handleEdgePick(pos);
-
-                otherwise
-                    % idle
             end
         end
 

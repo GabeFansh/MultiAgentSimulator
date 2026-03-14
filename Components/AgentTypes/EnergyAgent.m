@@ -37,9 +37,9 @@ classdef EnergyAgent < handle
         MASS = 10.0;              
         ROLLING_FRICTION = 0.02;  
         GRAVITY = 9.81;           
-        P0_BASE_MOTION = 5.82;    % Idle motor power (W)
-        ALPHA_VEL = 0.02 * 10 * 9.81; % Rolling resistance (W·s/m)
-        GAMMA_ACC = 0.5;          % Acceleration losses (W·s³/m²)
+        P0_BASE_MOTION = 5.82;    
+        ALPHA_VEL = 0.02 * 10 * 9.81; 
+        GAMMA_ACC = 0.5;          
         
         % CPU and Component Power
         CPU_MOVE = 5.5;           
