@@ -3,20 +3,97 @@ classdef ScenarioModel < handle
         agents = []
         targets = Target.empty
         edges = Edge.empty
+
         cumUncertaintyIntegral = 0
         lastLogTime = 0
         lastUncertainty = 0
         hasLastSample = false
+
         policyMap
-        motionModel
     end
 
     methods
         function obj = ScenarioModel()
-            obj.motionModel = SecondOrderMotionModel();
             obj.policyMap = containers.Map('KeyType','char','ValueType','any');
             obj.policyMap('Default') = RandomWalkPolicy();
             obj.policyMap('Energy') = BatteryEfficientPolicy();
+        end
+
+        function step(obj, dtSim, simTime)
+            if isempty(obj.agents), return; end
+
+            for k = 1:numel(obj.agents)
+                a = obj.agents(k);
+
+                if isprop(a, 'dwellRemaining') && a.dwellRemaining > 0
+                    a.dwellRemaining = max(0, a.dwellRemaining - dtSim);
+                    a.update(dtSim);
+                    continue;
+                end
+
+                if isempty(a.path)
+                    pol = obj.getPolicyForAgent(a);
+                    adj = obj.buildAdjacency();
+                    cmd = pol.plan(a, obj, adj, a.current_target_idx, simTime);
+
+                    if ~isempty(cmd) && strcmp(cmd.kind, "move")
+                        edge = obj.findEdge(a.current_target_idx, cmd.targetIdx);
+                        if ~isempty(edge)
+                            a.path = edge.curvePoints;
+                            if edge.targets(1).index ~= a.current_target_idx
+                                a.path = flipud(a.path);
+                            end
+                            a.pathIndex = 1;
+                            a.current_target_idx = cmd.targetIdx;
+
+                            if isfield(cmd, 'dwellSeconds')
+                                a.dwellRemaining = cmd.dwellSeconds;
+                            end
+                        end
+                    end
+                end
+
+                a.update(dtSim);
+            end
+        end
+
+        function [uNow, JNow] = updateTargetsAndLogObjective(obj, simTime, dtSim)
+            uNow = 0;
+            detectionRadius = 1.2;
+
+            for t = 1:numel(obj.targets)
+                nearby = [];
+                for a_idx = 1:numel(obj.agents)
+                    a = obj.agents(a_idx);
+                    distToTarget = norm(a.state.pos - obj.targets(t).position);
+
+                    if distToTarget < detectionRadius
+                        if isempty(nearby)
+                            nearby = a;
+                        else
+                            nearby(end+1) = a;
+                        end
+                    end
+                end
+
+                obj.targets(t).updateResidingAgents(nearby, simTime);
+                obj.targets(t).updateUncertainty(dtSim);
+                uNow = uNow + obj.targets(t).R;
+            end
+
+            if ~obj.hasLastSample
+                obj.lastLogTime = simTime;
+                obj.lastUncertainty = uNow;
+                obj.hasLastSample = true;
+            else
+                dt = simTime - obj.lastLogTime;
+                if dt > 0
+                    obj.cumUncertaintyIntegral = obj.cumUncertaintyIntegral + 0.5 * (obj.lastUncertainty + uNow) * dt;
+                    obj.lastLogTime = simTime;
+                    obj.lastUncertainty = uNow;
+                end
+            end
+            JNow = obj.cumUncertaintyIntegral / max(eps, simTime);
         end
 
         function s = exportLayout(obj)
@@ -64,7 +141,7 @@ classdef ScenarioModel < handle
 
             a.current_target_idx = tIdx;
             a.initialTargetIdx = tIdx;
-            a.initialPosition = a.position;
+            a.initialPosition = a.state.pos;
 
             if isempty(obj.agents)
                 obj.agents = a;
@@ -91,73 +168,6 @@ classdef ScenarioModel < handle
             for t = 1:numel(obj.targets)
                 obj.targets(t).reset();
             end
-        end
-
-        function step(obj, dtSim, simTime)
-            if isempty(obj.agents), return; end
-            for k = 1:numel(obj.agents)
-                a = obj.agents(k);
-                if isprop(a, 'dwellRemaining') && a.dwellRemaining > 0
-                    a.dwellRemaining = max(0, a.dwellRemaining - dtSim);
-                    continue;
-                end
-
-                if ~isempty(a.path)
-                    if obj.motionModel.step(a, dtSim)
-                        a.path = [];
-                        a.dwellRemaining = 0.5 + rand();
-                    end
-                else
-                    pol = obj.getPolicyForAgent(a);
-                    cmd = pol.plan(a, obj, obj.buildAdjacency(), a.current_target_idx, simTime);
-                    if ~isempty(cmd) && strcmp(cmd.kind, "move")
-                        edge = obj.findEdge(a.current_target_idx, cmd.targetIdx);
-                        if ~isempty(edge)
-                            a.path = edge.curvePoints;
-                            if edge.targets(1).index ~= a.current_target_idx
-                                a.path = flipud(a.path);
-                            end
-                            a.pathIndex = 1;
-                            a.current_target_idx = cmd.targetIdx;
-                        end
-                    end
-                end
-            end
-        end
-
-        function [uNow, JNow] = updateTargetsAndLogObjective(obj, simTime, dtSim)
-            uNow = 0;
-            detectionRadius = 1.0;
-            for t = 1:numel(obj.targets)
-                nearby = [];
-                for a_idx = 1:numel(obj.agents)
-                    a = obj.agents(a_idx);
-                    if norm(a.position - obj.targets(t).position) < detectionRadius
-                        if isempty(nearby)
-                            nearby = a;
-                        else
-                            nearby(end+1) = a;
-                        end
-                    end
-                end
-                obj.targets(t).updateResidingAgents(nearby, simTime);
-                obj.targets(t).updateUncertainty(dtSim);
-                uNow = uNow + obj.targets(t).R;
-            end
-
-            if ~obj.hasLastSample
-                obj.lastLogTime = simTime;
-                obj.lastUncertainty = uNow;
-                obj.hasLastSample = true;
-            else
-                dt = simTime - obj.lastLogTime;
-                if dt > 0
-                    obj.cumUncertaintyIntegral = obj.cumUncertaintyIntegral + 0.5 * (obj.lastUncertainty + uNow) * dt;
-                    obj.lastLogTime = simTime;
-                    obj.lastUncertainty = uNow;
-                end
-            end
-            JNow = obj.cumUncertaintyIntegral / max(eps, simTime);
         end
 
         function [idx, dist] = findNearestTarget(obj, pos)

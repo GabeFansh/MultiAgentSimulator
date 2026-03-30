@@ -109,7 +109,7 @@ classdef ScenarioRenderer < handle
                     a.draw(obj.ax);
                     hold(obj.ax, 'off');
                 else
-                    a.updatePosition();
+                    a.updateVisuals();
                 end
             end
         end
