@@ -9,10 +9,8 @@ classdef GraphEditController < handle
         clickTol = 3.0
         statusCallback 
 
-        % Grid snap settings
         gridStep = 5
 
-        % Bounds 
         xMin = 0
         xMax = 100
         yMin = 0
@@ -33,8 +31,14 @@ classdef GraphEditController < handle
             obj.say("Mode: " + obj.mode);
         end
 
+        %% Background Image Integration
+        function importBackground(obj)
+            obj.renderer.loadBackgroundImage();
+            obj.say("Background image loaded. You can now trace targets over the map.");
+        end
+
         function clearAll(obj)
-            obj.renderer.clearAxes();  % delete bars/rectangles first
+            obj.renderer.clearAxes();  
             obj.model.clearAll();
             obj.renderer.renderAll(obj.model);
             obj.setMode("idle");
@@ -50,7 +54,8 @@ classdef GraphEditController < handle
 
                 case "addAgent"
                     % -----------------------------------------------
-                    % Change "Energy" to "Default" to use standard agents
+                    % MANUAL OVERRIDE: Change "Energy" to "Default" 
+                    % to use standard agents instead of energy ones.
                     selectedType = "Energy"; 
                     % -----------------------------------------------
                     
