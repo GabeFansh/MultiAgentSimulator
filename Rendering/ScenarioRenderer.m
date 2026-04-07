@@ -14,7 +14,6 @@ classdef ScenarioRenderer < handle
             hold(obj.ax, 'off');
         end
 
-        %% Background Image Management
         function loadBackgroundImage(obj)
             [file, path] = uigetfile({'*.jpg;*.png;*.bmp;*.tif', 'Image Files (*.jpg, *.png, *.bmp, *.tif)'});
             if isequal(file, 0), return; end
@@ -27,21 +26,14 @@ classdef ScenarioRenderer < handle
             end
 
             hold(obj.ax, 'on');
-
             obj.bgImageHandle = image(obj.ax, [0 100], [0 100], img, 'HandleVisibility', 'off');
-
             set(obj.bgImageHandle, 'AlphaData', 0.85);
-
             set(obj.ax, 'YDir', 'normal');
-
             set(obj.ax, 'Layer', 'top');
-
             uistack(obj.bgImageHandle, 'bottom');
-
             hold(obj.ax, 'off');
         end
 
-        %% Canvas Management
         function clearAxes(obj)
             if ~isempty(obj.bgImageHandle) && isgraphics(obj.bgImageHandle)
                 allObjs = allchild(obj.ax);
@@ -58,8 +50,7 @@ classdef ScenarioRenderer < handle
             grid(obj.ax, 'on');
             axis(obj.ax, 'equal');
             xlim(obj.ax, [0 100]); ylim(obj.ax, [0 100]);
-            title(obj.ax, 'Scenario Editor: Click to add Targets/Agents/Edges');
-
+            
             hold(obj.ax, 'on');
             obj.edgePreviewLine = line(obj.ax, [NaN NaN], [NaN NaN], ...
                 'LineStyle', '--', 'LineWidth', 1, 'HitTest', 'off');
@@ -80,11 +71,22 @@ classdef ScenarioRenderer < handle
             end
         end
 
-        %% Main Rendering Loop
         function renderAll(obj, model)
+            obj.renderWalls(model);
             obj.renderEdges(model);
             obj.renderTargets(model);
             obj.renderAgents(model);
+        end
+
+        function renderWalls(obj, model)
+            if isempty(model.walls), return; end
+            hold(obj.ax, 'on');
+            for i = 1:size(model.walls, 1)
+                w = model.walls(i, :);
+                line(obj.ax, [w(1) w(3)], [w(2) w(4)], ...
+                    'Color', 'k', 'LineWidth', 3, 'HandleVisibility', 'off');
+            end
+            hold(obj.ax, 'off');
         end
 
         function renderTargets(obj, model)

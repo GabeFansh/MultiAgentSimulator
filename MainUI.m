@@ -2,28 +2,19 @@ classdef MainUI < handle
     properties
         fig
         ax
-
-        % Tools panel widgets
         speedField
         modeLabel
         statusLabel
-
-        % Time control widgets
         timeLabel
         endTimeField
         dtField
         timeScaleSlider
-
-        % Core objects
         model
         renderer
         controller
-
         clock
         sim
-
         objectiveWin
-
         gridStep = 5;
         snapTargets = true;
     end
@@ -38,14 +29,12 @@ classdef MainUI < handle
 
             obj.objectiveWin = ObjectivePlotWindow();
 
-            % Simulation
             obj.clock = SimulationClock(obj.endTimeField.Value, obj.dtField.Value);
             obj.sim = SimulationController(obj.model, obj.renderer, obj.clock, ...
                 @(t,tEnd)obj.setTime(t,tEnd), ...
                 @(m)obj.setStatus(m), ...
                 @(t,J)obj.objectiveWin.addPoint(t,J));
 
-            % Mouse move for edge preview
             obj.fig.WindowButtonMotionFcn = @(~,~)obj.safeOnMouseMove();
 
             obj.controller.setMode("idle");
@@ -57,15 +46,14 @@ classdef MainUI < handle
     methods (Access=private)
         function buildUI(obj)
             obj.fig = uifigure('Name','Refactored Sketch UI + Time Control', ...
-                'Position',[100 100 1200 750]);
+                'Position', [100 100 1200 750]);
+            
+            % FIXED: Added a safer close request that handles the objective window explicitly
+            obj.fig.CloseRequestFcn = @(~,~) obj.forceCloseAll();
 
-            % Tools panel (top-left)
             p = uipanel(obj.fig, 'Title','Tools', 'Position',[10 270 260 470]);
-
-            % Time control panel (bottom-left)
             tp = uipanel(obj.fig, 'Title','Time Control', 'Position',[10 10 260 250]);
 
-            % Axes
             obj.ax = uiaxes(obj.fig, 'Position',[290 10 900 730]);
             try
                 disableDefaultInteractivity(obj.ax);
@@ -73,63 +61,51 @@ classdef MainUI < handle
             end
             grid(obj.ax,'on'); axis(obj.ax,'equal');
             xlim(obj.ax,[0 100]); ylim(obj.ax,[0 100]);
-            title(obj.ax,'Click to add targets/agents/edges');
+            title(obj.ax,'Click to add targets/agents/edges/walls');
 
-            % ----- Tools buttons -----
-            % Top buttons remain at their standard spacing
-            uibutton(p,'Text','Add Target','Position',[20 380 220 42], ...
+            uibutton(p,'Text','Add Target','Position',[20 400 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("addTarget"));
-            uibutton(p,'Text','Add Agent (on target)','Position',[20 330 220 42], ...
+            uibutton(p,'Text','Add Agent (on target)','Position',[20 360 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("addAgent"));
-            uibutton(p,'Text','Add Edge (pick 2 targets)','Position',[20 280 220 42], ...
+            uibutton(p,'Text','Add Edge (pick 2 targets)','Position',[20 320 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("addEdge"));
-            uibutton(p,'Text','Idle','Position',[20 235 220 36], ...
+            uibutton(p,'Text','Add Wall (2 clicks)','Position', [20 280 220 35], ...
+                'ButtonPushedFcn', @(~,~)obj.setMode("addWall"));
+            uibutton(p,'Text','Idle','Position',[20 240 220 30], ...
                 'ButtonPushedFcn', @(~,~)obj.setMode("idle"));
-            uibutton(p,'Text','Clear All','Position',[20 185 220 40], ...
+            uibutton(p,'Text','Import Background Map...','Position',[20 210 220 20], ...
+                'FontSize', 10, ...
+                'ButtonPushedFcn', @(~,~)obj.controller.importBackground());
+            uibutton(p,'Text','Clear All','Position',[20 180 220 25], ...
                 'ButtonPushedFcn', @(~,~)obj.onClearAll());
 
-
-            % Change background
-            uibutton(p,'Text','Import Background Map...','Position',[20 210 220 20], ...
-            'FontSize', 10, ...
-            'ButtonPushedFcn', @(~,~)obj.controller.importBackground());
-
-            % Layout save/load
-            uibutton(p,'Text','Save Layout...','Position',[20 145 105 32], ...
+            uibutton(p,'Text','Save Layout...','Position',[20 145 105 30], ...
                 'ButtonPushedFcn', @(~,~)obj.onSaveLayout());
-            uibutton(p,'Text','Load Layout...','Position',[135 145 105 32], ...
+            uibutton(p,'Text','Load Layout...','Position',[135 145 105 30], ...
                 'ButtonPushedFcn', @(~,~)obj.onLoadLayout());
 
-            % Agent acceleration
             uilabel(p,'Text','Agent Accel:','Position',[20 110 90 22]);
             obj.speedField = uieditfield(p,'numeric','Value',15,'Limits',[0.01 Inf], ...
                 'Position',[115 106 125 30]);
 
-            % Mode and Status labels 
             obj.modeLabel = uilabel(p,'Text','Mode: idle', ...
                 'Position',[20 75 220 26], 'FontWeight','bold');
             obj.statusLabel = uilabel(p,'Text','', ...
                 'Position',[20 10 220 60], 'WordWrap','on');
 
-            % Canvas click callback
             obj.ax.PickableParts = 'all';
             obj.ax.HitTest = 'on';
             obj.ax.ButtonDownFcn = @(ax,~)obj.onAxesClick(ax);
 
-            % ----- Time control -----
             obj.timeLabel = uilabel(tp,'Text','t = 0.00 / 60.00', ...
                 'Position',[20 200 220 22], 'FontWeight','bold');
 
             uibutton(tp,'Text','Play','Position',[20 155 100 35], ...
                 'ButtonPushedFcn', @(~,~)obj.sim.play());
-
             uibutton(tp,'Text','Pause','Position',[140 155 100 35], ...
                 'ButtonPushedFcn', @(~,~)obj.sim.pause());
-
             uibutton(tp,'Text','Run to End','Position',[20 115 220 35], ...
                 'ButtonPushedFcn', @(~,~)obj.sim.runToEnd());
-
-            % Reset time
             uibutton(tp,'Text','Reset Time','Position',[20 80 220 30], ...
                 'ButtonPushedFcn', @(~,~)obj.onResetSimulation());
 
@@ -150,20 +126,26 @@ classdef MainUI < handle
                 'ValueChangedFcn', @(s,~)obj.sim.setTimeScale(s.Value));
         end
 
+        function forceCloseAll(obj)
+            % 1. Stop simulation timer immediately
+            if ~isempty(obj.sim)
+                obj.sim.pause();
+            end
+            delete(timerfindall); 
+
+            % 2. Close the objective window if it exists
+            if ~isempty(obj.objectiveWin) && isprop(obj.objectiveWin, 'fig') && isgraphics(obj.objectiveWin.fig)
+                delete(obj.objectiveWin.fig);
+            end
+
+            % 3. Delete the main figure
+            delete(obj.fig);
+        end
+
         function onSaveLayout(obj)
-            if isempty(obj.model) || ~isa(obj.model,'ScenarioModel') || ~ismethod(obj.model,'exportLayout')
-                obj.setStatus("ScenarioModel.exportLayout() not found.");
-                return;
-            end
-
             s = obj.model.exportLayout();
-
             [f,d] = uiputfile('*.mat','Save layout as');
-            if isequal(f,0)
-                obj.setStatus("Save cancelled.");
-                return;
-            end
-
+            if isequal(f,0), return; end
             try
                 save(fullfile(d,f), 's');
                 obj.setStatus("Saved layout: " + string(fullfile(d,f)));
@@ -173,103 +155,50 @@ classdef MainUI < handle
         end
 
         function onLoadLayout(obj)
-            if isempty(obj.model) || ~isa(obj.model,'ScenarioModel') || ~ismethod(obj.model,'importLayout')
-                obj.setStatus("ScenarioModel.importLayout() not found.");
-                return;
-            end
-
             [f,d] = uigetfile('*.mat','Load layout');
-            if isequal(f,0)
-                obj.setStatus("Load cancelled.");
-                return;
-            end
-
+            if isequal(f,0), return; end
             try
                 tmp = load(fullfile(d,f), 's');
-                if ~isfield(tmp,'s')
-                    obj.setStatus("Selected file does not contain variable 's'.");
-                    return;
-                end
-
-                % stop simulation first
-                if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
-                    obj.sim.pause();
-                end
-
-                % import scenario
+                if ~isfield(tmp,'s'), return; end
+                if ~isempty(obj.sim), obj.sim.pause(); end
                 obj.model.importLayout(tmp.s);
-
-                % refresh visuals
-                if ~isempty(obj.renderer) && isa(obj.renderer,'ScenarioRenderer')
-                    obj.renderer.clearAxes();
-                    obj.renderer.renderAll(obj.model);
-                end
-
-                % reset plot + simulation time/state
+                obj.renderer.clearAxes();
+                obj.renderer.renderAll(obj.model);
                 if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
                     obj.objectiveWin.reset();
                     obj.objectiveWin.addPoint(0,0);
                 end
-
-                if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
-                    obj.sim.reset();
-                else
-                    if ~isempty(obj.clock)
-                        obj.clock.reset();
-                        obj.setTime(0, obj.clock.endTime);
-                    end
-                end
-
+                obj.sim.reset();
                 obj.controller.setMode("idle");
                 obj.setStatus("Loaded layout: " + string(fullfile(d,f)));
-
             catch ME
                 obj.setStatus("Load failed: " + string(ME.message));
             end
         end
 
         function onResetSimulation(obj)
-            % Reset plot
             if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
                 obj.objectiveWin.reset();
                 obj.objectiveWin.addPoint(0,0);
             end
-
-            % Reset sim
-            if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
-                obj.sim.reset();
-            end
-            obj.setStatus('Reset simulation + objective plot.');
+            obj.sim.reset();
+            obj.setStatus('Reset simulation.');
         end
 
         function onClearAll(obj)
-            % Clear All = wipe scenario completely.
-            if ~isempty(obj.sim) && isa(obj.sim,'SimulationController')
-                obj.sim.pause();
-            end
-
-            if ~isempty(obj.controller) && isa(obj.controller,'GraphEditController')
-                obj.controller.clearAll();
-            end
-
+            if ~isempty(obj.sim), obj.sim.pause(); end
+            obj.controller.clearAll();
             if ~isempty(obj.objectiveWin) && isvalid(obj.objectiveWin)
                 obj.objectiveWin.reset();
                 obj.objectiveWin.addPoint(0,0);
             end
-
-            if ~isempty(obj.clock)
-                obj.clock.reset();
-                obj.setTime(0, obj.clock.endTime);
-            end
-
+            obj.clock.reset();
+            obj.setTime(0, obj.clock.endTime);
             obj.setStatus('Cleared everything.');
         end
 
         function setMode(obj, m)
             obj.modeLabel.Text = "Mode: " + string(m);
-            if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
-                return;
-            end
             obj.controller.setMode(m);
         end
 
@@ -278,28 +207,18 @@ classdef MainUI < handle
         end
 
         function setTime(obj, t, tEnd)
-            if isempty(obj.timeLabel) || ~isvalid(obj.timeLabel)
-                return;
-            end
+            if isempty(obj.timeLabel) || ~isvalid(obj.timeLabel), return; end
             obj.timeLabel.Text = sprintf('t = %.2f / %.2f', t, tEnd);
         end
 
         function onAxesClick(obj, ax)
-            if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
-                return;
-            end
             cp = ax.CurrentPoint;
             pos = [cp(1,1) cp(1,2)];
             obj.controller.onCanvasClick(pos, obj.speedField.Value);
         end
 
         function safeOnMouseMove(obj)
-            if isempty(obj.controller) || ~isa(obj.controller,'GraphEditController')
-                return;
-            end
-            if isempty(obj.ax) || ~isvalid(obj.ax)
-                return;
-            end
+            if isempty(obj.ax) || ~isvalid(obj.ax), return; end
             cp = obj.ax.CurrentPoint;
             pos = [cp(1,1) cp(1,2)];
             obj.controller.onCanvasMove(pos);

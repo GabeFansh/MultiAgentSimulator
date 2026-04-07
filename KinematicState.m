@@ -6,6 +6,8 @@ classdef KinematicState < handle
         ori double = 0
         maxSpeed = 5
         maxAccel = 15
+        wallDetected logical = false
+        lastWallPoint double = [NaN NaN]
     end
     
     methods
