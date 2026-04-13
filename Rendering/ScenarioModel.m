@@ -32,22 +32,21 @@ classdef ScenarioModel < handle
                 
                 for s = 1:numSubSteps
                     nextPos = a.state.pos + a.state.vel * subDt;
-                    [hit, hitPoint] = obj.checkWallCollision(a.state.pos, nextPos);
+                    [hit, hitPoint, wallNormal] = obj.checkWallCollision(a.state.pos, nextPos);
                     
                     if hit
                         a.state.wallDetected = true;
                         a.state.lastWallPoint = hitPoint;
                         
-                     
-                        dirBack = (a.state.pos - hitPoint);
-                        if norm(dirBack) > 1e-5
-                            a.state.pos = hitPoint + (dirBack / norm(dirBack)) * 0.08;
-                        else
-                            a.state.pos = a.state.pos; 
-                        end
+                        % OFFSET NUDGE: Move to hit point but stay 0.05 units away 
+                        % from the wall surface to prevent "stiction".
+                        a.state.pos = hitPoint + wallNormal * 0.05;
                         
-                    
-                        a.state.vel = a.state.vel * 0.1;
+                        % Projection: Keep lateral speed, kill only inward speed
+                        vIntoWall = dot(a.state.vel, wallNormal);
+                        if vIntoWall < 0 % Moving into the wall
+                            a.state.vel = a.state.vel - vIntoWall * wallNormal;
+                        end
                         break; 
                     else
                         a.state.wallDetected = false;
@@ -80,12 +79,11 @@ classdef ScenarioModel < handle
             end
         end
 
-        function [hit, point] = checkWallCollision(obj, p1, p2)
-            hit = false; point = [NaN, NaN];
+        function [hit, point, normal] = checkWallCollision(obj, p1, p2)
+            hit = false; point = [NaN, NaN]; normal = [0 0];
             moveVec = p2 - p1;
             if norm(moveVec) < 1e-6, return; end
-            
-            p2_ext = p2 + (moveVec / norm(moveVec)) * 0.1;
+            p2_ext = p2 + (moveVec / norm(moveVec)) * 0.05;
 
             for i = 1:size(obj.walls, 1)
                 w = obj.walls(i, :);
@@ -97,14 +95,17 @@ classdef ScenarioModel < handle
                 if (ua >= 0 && ua <= 1) && (ub >= 0 && ub <= 1)
                     hit = true;
                     point = p1 + ua * (p2_ext - p1);
+                    wallVec = p4 - p3;
+                    n = [-wallVec(2), wallVec(1)];
+                    normal = n / norm(n);
+                    if dot(normal, p1 - point) < 0, normal = -normal; end
                     return;
                 end
             end
         end
-
+        
         function [uNow, JNow] = updateTargetsAndLogObjective(obj, simTime, dtSim)
-            uNow = 0;
-            detectionRadius = 1.2; 
+            uNow = 0; detectionRadius = 1.2; 
             for t = 1:numel(obj.targets)
                 nearby = [];
                 for a_idx = 1:numel(obj.agents)

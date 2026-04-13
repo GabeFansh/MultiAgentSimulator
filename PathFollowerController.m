@@ -21,14 +21,23 @@ classdef PathFollowerController < handle
             if state.wallDetected && ~isnan(state.lastWallPoint(1))
                 vecToTarget = targetPos - state.pos;
                 
-                tangent = [-vecToTarget(2), vecToTarget(1)];
+                % Possible tangents
+                t1 = [-vecToTarget(2), vecToTarget(1)];
+                t2 = [vecToTarget(2), -vecToTarget(1)];
                 
+                % Choose tangent that aligns better with current velocity 
+                % or target direction to maintain flow.
+                if dot(t1, vecToTarget) >= dot(t2, vecToTarget)
+                    tangent = t1;
+                else
+                    tangent = t2;
+                end
                 
-                tangent = tangent + (vecToTarget * 0.05);
                 tangent = tangent / (norm(tangent) + eps);
                 
-                
-                aCmd = (obj.kp * 20.0 * tangent) - (obj.kd * 0.2 * state.vel);
+                % OVERDRIVE: Use a very high gain to ensure the agent 
+                % keeps moving at max speed along the wall.
+                aCmd = (obj.kp * 50.0 * tangent) - (obj.kd * 0.1 * state.vel);
             else
                 distToCurrentPoint = norm(targetPos - state.pos);
                 while distToCurrentPoint < obj.lookAheadDist && pathIndex < size(path, 1)
