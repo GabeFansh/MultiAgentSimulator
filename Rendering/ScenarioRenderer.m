@@ -17,14 +17,11 @@ classdef ScenarioRenderer < handle
         function loadBackgroundImage(obj)
             [file, path] = uigetfile({'*.jpg;*.png;*.bmp;*.tif', 'Image Files (*.jpg, *.png, *.bmp, *.tif)'});
             if isequal(file, 0), return; end
-
             img = imread(fullfile(path, file));
             img = flipud(img);
-
             if ~isempty(obj.bgImageHandle) && isgraphics(obj.bgImageHandle)
                 delete(obj.bgImageHandle);
             end
-
             hold(obj.ax, 'on');
             obj.bgImageHandle = image(obj.ax, [0 100], [0 100], img, 'HandleVisibility', 'off');
             set(obj.bgImageHandle, 'AlphaData', 0.85);
@@ -46,11 +43,9 @@ classdef ScenarioRenderer < handle
                     cla(obj.ax, 'reset');
                 end
             end
-
             grid(obj.ax, 'on');
             axis(obj.ax, 'equal');
             xlim(obj.ax, [0 100]); ylim(obj.ax, [0 100]);
-            
             hold(obj.ax, 'on');
             obj.edgePreviewLine = line(obj.ax, [NaN NaN], [NaN NaN], ...
                 'LineStyle', '--', 'LineWidth', 1, 'HitTest', 'off');
@@ -84,7 +79,7 @@ classdef ScenarioRenderer < handle
             for i = 1:size(model.walls, 1)
                 w = model.walls(i, :);
                 line(obj.ax, [w(1) w(3)], [w(2) w(4)], ...
-                    'Color', 'k', 'LineWidth', 3, 'HandleVisibility', 'off');
+                    'Color', [0.2 0.2 0.2], 'LineWidth', 4, 'Tag', 'Wall');
             end
             hold(obj.ax, 'off');
         end
@@ -92,10 +87,7 @@ classdef ScenarioRenderer < handle
         function renderTargets(obj, model)
             for k = 1:numel(model.targets)
                 t = model.targets(k);
-                needsDraw = isempty(t.graphicHandle) || ~isgraphics(t.graphicHandle) || ...
-                    isempty(t.barHandle)     || ~isgraphics(t.barHandle)     || ...
-                    isempty(t.labelHandle)   || ~isgraphics(t.labelHandle);
-                if needsDraw
+                if isempty(t.graphicHandle) || ~isgraphics(t.graphicHandle)
                     hold(obj.ax, 'on');
                     t.draw(obj.ax);
                     hold(obj.ax, 'off');
@@ -121,7 +113,10 @@ classdef ScenarioRenderer < handle
                 e = model.edges(k);
                 if isempty(e.lineHandle) || ~isgraphics(e.lineHandle)
                     hold(obj.ax, 'on');
-                    e.draw(obj.ax);
+                    e.lineHandle = plot(obj.ax, e.curvePoints(:,1), e.curvePoints(:,2), ...
+                        'Color', [0.6 0.6 0.6], 'LineWidth', 1.5, 'LineStyle', '--', ...
+                        'PickableParts', 'none');
+                    uistack(e.lineHandle, 'bottom');
                     hold(obj.ax, 'off');
                 end
             end

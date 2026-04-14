@@ -6,7 +6,8 @@ classdef PhysicalIntegrator < handle
             if vNorm > state.maxSpeed
                 state.vel = (state.vel / vNorm) * state.maxSpeed;
             end
-            if vNorm > 0.1
+            state.pos = state.pos + state.vel * dt;
+            if norm(state.vel) > 0.1
                 state.ori = atan2(state.vel(2), state.vel(1));
             end
         end

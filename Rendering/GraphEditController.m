@@ -2,16 +2,12 @@ classdef GraphEditController < handle
     properties
         model
         renderer
-
-        mode = "idle"      % "idle" | "addTarget" | "addAgent" | "addEdge" | "addWall"
+        mode = "idle"
         edgePick = []      
-        wallPoints = []    % Stores the first point of a wall during placement
-
+        wallPoints = []    
         clickTol = 3.0
         statusCallback 
-
         gridStep = 5
-
         xMin = 0
         xMax = 100
         yMin = 0
@@ -28,14 +24,14 @@ classdef GraphEditController < handle
         function setMode(obj, m)
             obj.mode = string(m);
             obj.edgePick = [];
-            obj.wallPoints = []; % Clear partial wall placement
+            obj.wallPoints = []; 
             obj.renderer.resetEdgePreview();
             obj.say("Mode: " + obj.mode);
         end
 
         function importBackground(obj)
             obj.renderer.loadBackgroundImage();
-            obj.say("Background image loaded. You can now trace targets over the map.");
+            obj.say("Background image loaded.");
         end
 
         function clearAll(obj)
@@ -46,15 +42,12 @@ classdef GraphEditController < handle
         end
 
         function onCanvasClick(obj, pos, agentSpeed)
-            % Snap to grid for targets and walls to keep layout clean
             snappedPos = obj.snapToGrid(pos, obj.gridStep);
             snappedPos = obj.clampToBounds(snappedPos);
-
             switch obj.mode
                 case "addTarget"
                     obj.model.addTarget(snappedPos);
                     obj.renderer.renderAll(obj.model);
-
                 case "addAgent"
                     selectedType = "Energy"; 
                     [~, ok, msg] = obj.model.addAgentOnTarget(pos, agentSpeed, obj.clickTol, selectedType);
@@ -63,35 +56,29 @@ classdef GraphEditController < handle
                         return;
                     end
                     obj.renderer.renderAll(obj.model);
-
                 case "addEdge"
                     obj.handleEdgePick(pos);
-
                 case "addWall"
                     if isempty(obj.wallPoints)
-                        % First click: Start of the wall
                         obj.wallPoints = snappedPos;
-                        obj.say("Start point set. Click again for end point.");
+                        obj.say("Start point set.");
                         obj.renderer.updateEdgePreview(obj.wallPoints, snappedPos);
                     else
-                        % Second click: End of the wall
                         obj.model.addWall(obj.wallPoints, snappedPos);
                         obj.wallPoints = [];
                         obj.renderer.resetEdgePreview();
+                        obj.model.replanAllEdges();
                         obj.renderer.renderAll(obj.model);
-                        obj.say("Wall added.");
+                        obj.say("Wall added and paths re-planned.");
                     end
             end
         end
 
         function onCanvasMove(obj, pos)
-            % Reuse edge preview for both Edges and Walls
             if obj.mode == "addEdge" && ~isempty(obj.edgePick)
                 p1 = obj.model.targets(obj.edgePick(1)).position;
                 obj.renderer.updateEdgePreview(p1, pos);
-            
             elseif obj.mode == "addWall" && ~isempty(obj.wallPoints)
-                % Show preview line from first wall point to mouse cursor
                 snappedPos = obj.snapToGrid(pos, obj.gridStep);
                 snappedPos = obj.clampToBounds(snappedPos);
                 obj.renderer.updateEdgePreview(obj.wallPoints, snappedPos);
@@ -102,10 +89,9 @@ classdef GraphEditController < handle
     methods (Access=private)
         function handleEdgePick(obj, pos)
             if numel(obj.model.targets) < 2
-                obj.say("Add at least 2 targets first.");
+                obj.say("Add at least 2 targets.");
                 return;
             end
-
             [tIdx, dist] = obj.model.findNearestTarget(pos);
             if isempty(tIdx) || dist > obj.clickTol
                 return;
@@ -113,26 +99,21 @@ classdef GraphEditController < handle
             if any(obj.edgePick == tIdx)
                 return;
             end
-
             obj.edgePick(end+1) = tIdx;
-
             if isscalar(obj.edgePick)
-                obj.say(sprintf("Picked T%d. Pick second target...", tIdx));
+                obj.say(sprintf("Picked T%d. Pick second...", tIdx));
                 p1 = obj.model.targets(tIdx).position;
                 obj.renderer.updateEdgePreview(p1, pos);
                 return;
             end
-
             i = obj.edgePick(1);
             j = obj.edgePick(2);
-
             [~, ok, msg] = obj.model.addEdgeByTargets(i, j);
-            if ~ok
-                obj.say(msg);
+            if ok
+                obj.say(sprintf("Shortest path planned T%d to T%d", i, j));
             else
-                obj.say(sprintf("Created edge T%d—T%d", i, j));
+                obj.say(msg);
             end
-
             obj.edgePick = [];
             obj.renderer.resetEdgePreview();
             obj.renderer.renderAll(obj.model);

@@ -22,43 +22,27 @@ classdef ScenarioModel < handle
             obj.walls = [obj.walls; p1(1), p1(2), p2(1), p2(2)];
         end
 
+        function replanAllEdges(obj)
+            for k = 1:numel(obj.edges)
+                e = obj.edges(k);
+                pStart = e.targets(1).position;
+                pEnd = e.targets(2).position;
+                e.curvePoints = obj.planShortestPath(pStart, pEnd);
+                if ~isempty(e.lineHandle) && isgraphics(e.lineHandle)
+                    delete(e.lineHandle);
+                    e.lineHandle = [];
+                end
+            end
+        end
+
         function step(obj, dtSim, simTime)
             if isempty(obj.agents), return; end
-
             for k = 1:numel(obj.agents)
                 a = obj.agents(k);
-                numSubSteps = 4;
-                subDt = dtSim / numSubSteps;
-                
-                for s = 1:numSubSteps
-                    nextPos = a.state.pos + a.state.vel * subDt;
-                    [hit, hitPoint, wallNormal] = obj.checkWallCollision(a.state.pos, nextPos);
-                    
-                    if hit
-                        a.state.wallDetected = true;
-                        a.state.lastWallPoint = hitPoint;
-                        
-                        % OFFSET NUDGE: Move to hit point but stay 0.05 units away 
-                        % from the wall surface to prevent "stiction".
-                        a.state.pos = hitPoint + wallNormal * 0.05;
-                        
-                        % Projection: Keep lateral speed, kill only inward speed
-                        vIntoWall = dot(a.state.vel, wallNormal);
-                        if vIntoWall < 0 % Moving into the wall
-                            a.state.vel = a.state.vel - vIntoWall * wallNormal;
-                        end
-                        break; 
-                    else
-                        a.state.wallDetected = false;
-                        a.state.pos = nextPos;
-                    end
-                end
-
                 if isprop(a, 'dwellRemaining') && a.dwellRemaining > 0
                     a.dwellRemaining = max(0, a.dwellRemaining - dtSim);
                     continue;
                 end
-
                 if isempty(a.path)
                     pol = obj.getPolicyForAgent(a);
                     adj = obj.buildAdjacency();
@@ -67,7 +51,7 @@ classdef ScenarioModel < handle
                         edge = obj.findEdge(a.current_target_idx, cmd.targetIdx);
                         if ~isempty(edge)
                             a.path = edge.curvePoints;
-                            if edge.targets(1).index ~= a.current_target_idx
+                            if norm(a.path(1,:) - a.state.pos) > norm(a.path(end,:) - a.state.pos)
                                 a.path = flipud(a.path);
                             end
                             a.pathIndex = 1;
@@ -79,31 +63,122 @@ classdef ScenarioModel < handle
             end
         end
 
-        function [hit, point, normal] = checkWallCollision(obj, p1, p2)
-            hit = false; point = [NaN, NaN]; normal = [0 0];
-            moveVec = p2 - p1;
-            if norm(moveVec) < 1e-6, return; end
-            p2_ext = p2 + (moveVec / norm(moveVec)) * 0.05;
+        function [e, ok, msg] = addEdgeByTargets(obj, t1Idx, t2Idx)
+            e = Edge.empty; ok = false; msg = "";
+            pStart = obj.targets(t1Idx).position;
+            pEnd = obj.targets(t2Idx).position;
+            pathPoints = obj.planShortestPath(pStart, pEnd);
+            idx = numel(obj.edges) + 1;
+            e = Edge(idx, [obj.targets(t1Idx), obj.targets(t2Idx)], pathPoints);
+            obj.edges(end+1) = e;
+            ok = true;
+        end
 
+        function path = planShortestPath(obj, pStart, pEnd)
+            nodes = [pStart; pEnd];
+            buffer = 1.2; 
             for i = 1:size(obj.walls, 1)
                 w = obj.walls(i, :);
-                p3 = [w(1), w(2)]; p4 = [w(3), w(4)];
-                den = (p4(2)-p3(2))*(p2_ext(1)-p1(1)) - (p4(1)-p3(1))*(p2_ext(2)-p1(2));
-                if abs(den) < 1e-10, continue; end 
-                ua = ((p4(1)-p3(1))*(p1(2)-p3(2)) - (p4(2)-p3(2))*(p1(1)-p3(1))) / den;
-                ub = ((p2_ext(1)-p1(1))*(p1(2)-p3(2)) - (p2_ext(2)-p1(2))*(p1(1)-p3(1))) / den;
-                if (ua >= 0 && ua <= 1) && (ub >= 0 && ub <= 1)
-                    hit = true;
-                    point = p1 + ua * (p2_ext - p1);
-                    wallVec = p4 - p3;
-                    n = [-wallVec(2), wallVec(1)];
-                    normal = n / norm(n);
-                    if dot(normal, p1 - point) < 0, normal = -normal; end
-                    return;
+                p1 = [w(1),w(2)]; p2 = [w(3),w(4)];
+                nodes = [nodes; obj.getBufferedCorners(p1, p2, buffer)];
+            end
+            nNodes = size(nodes, 1);
+            adj = inf(nNodes, nNodes);
+            for i = 1:nNodes
+                for j = i+1:nNodes
+                    if ~obj.isLineBlocked(nodes(i,:), nodes(j,:))
+                        d = norm(nodes(i,:) - nodes(j,:));
+                        adj(i,j) = d; adj(j,i) = d;
+                    end
+                end
+            end
+            pathIndices = obj.dijkstra(adj, 1, 2);
+            rawPath = nodes(pathIndices, :);
+            path = obj.smoothPath(rawPath);
+        end
+
+        function smoothed = smoothPath(obj, path)
+            if size(path, 1) < 3
+                smoothed = path;
+                return;
+            end
+            t = 1:size(path, 1);
+            ts = linspace(1, size(path, 1), size(path, 1) * 10);
+            smoothed = [interp1(t, path(:,1), ts, 'pchip')', ...
+                        interp1(t, path(:,2), ts, 'pchip')'];
+        end
+
+        function pts = getBufferedCorners(obj, p1, p2, dist)
+            dir = (p2 - p1) / (norm(p2 - p1) + eps);
+            perp = [-dir(2), dir(1)];
+            offsets = {dir*dist+perp*dist, dir*dist-perp*dist, -dir*dist+perp*dist, -dir*dist-perp*dist};
+            pts = [p1 + offsets{3}; p1 + offsets{4}; p2 + offsets{1}; p2 + offsets{2}];
+            valid = false(size(pts,1),1);
+            for i = 1:size(pts,1)
+                if ~obj.isPointNearWall(pts(i,:)), valid(i) = true; end
+            end
+            pts = pts(valid, :);
+        end
+
+        function near = isPointNearWall(obj, pt)
+            near = false;
+            for i = 1:size(obj.walls, 1)
+                w = obj.walls(i, :);
+                p1 = [w(1), w(2)]; p2 = [w(3), w(4)];
+                v = p2 - p1; w_vec = pt - p1;
+                c1 = dot(w_vec, v);
+                if c1 <= 0, d = norm(pt - p1);
+                else
+                    c2 = dot(v, v);
+                    if c2 <= c1, d = norm(pt - p2);
+                    else, b = c1 / c2; pb = p1 + b * v; d = norm(pt - pb); end
+                end
+                if d < 0.6, near = true; return; end
+            end
+        end
+
+        function blocked = isLineBlocked(obj, p1, p2)
+            blocked = false;
+            mid = (p1 + p2) / 2;
+            if obj.isPointNearWall(mid), blocked = true; return; end
+            for i = 1:size(obj.walls, 1)
+                w = obj.walls(i, :);
+                if obj.intersectSegments(p1, p2, [w(1),w(2)], [w(3),w(4)])
+                    blocked = true; return;
                 end
             end
         end
-        
+
+        function hit = intersectSegments(obj, a, b, c, d)
+            den = (d(2)-c(2))*(b(1)-a(1)) - (d(1)-c(1))*(b(2)-a(2));
+            if abs(den) < 1e-10, hit = false; return; end
+            ua = ((d(1)-c(1))*(a(2)-c(2)) - (d(2)-c(2))*(a(1)-c(1))) / den;
+            ub = ((b(1)-a(1))*(a(2)-c(2)) - (b(2)-a(2))*(a(1)-c(1))) / den;
+            hit = (ua > 0.005 && ua < 0.995 && ub > 0.005 && ub < 0.995);
+        end
+
+        function idxs = dijkstra(obj, adj, startNode, endNode)
+            n = size(adj, 1);
+            dist = inf(1, n); prev = zeros(1, n);
+            dist(startNode) = 0;
+            Q = 1:n;
+            while ~isempty(Q)
+                [~, q_idx] = min(dist(Q));
+                u = Q(q_idx);
+                if u == endNode || isinf(dist(u)), break; end
+                Q(q_idx) = [];
+                for v = 1:n
+                    if isinf(adj(u,v)), continue; end
+                    alt = dist(u) + adj(u,v);
+                    if alt < dist(v), dist(v) = alt; prev(v) = u; end
+                end
+            end
+            idxs = []; curr = endNode;
+            while curr ~= 0
+                idxs = [curr, idxs]; curr = prev(curr);
+            end
+        end
+
         function [uNow, JNow] = updateTargetsAndLogObjective(obj, simTime, dtSim)
             uNow = 0; detectionRadius = 1.2; 
             for t = 1:numel(obj.targets)
@@ -155,14 +230,6 @@ classdef ScenarioModel < handle
         function t = addTarget(obj, pos)
             t = Target(numel(obj.targets) + 1, pos);
             obj.targets(end+1) = t;
-        end
-
-        function [e, ok, msg] = addEdgeByTargets(obj, t1Idx, t2Idx)
-            e = Edge.empty; ok = false; msg = "";
-            if double(t1Idx) == double(t2Idx), msg = "Cannot connect to self."; return; end
-            idx = numel(obj.edges) + 1;
-            e = Edge(idx, [obj.targets(t1Idx), obj.targets(t2Idx)]);
-            obj.edges(end+1) = e; ok = true;
         end
 
         function [a, ok, msg] = addAgentOnTarget(obj, clickPos, speed, tol, type)
