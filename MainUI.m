@@ -22,7 +22,9 @@ classdef MainUI < handle
     methods
         function obj = MainUI()
             obj.buildUI();
+            % Edit Edge Path Planning Model Here
             obj.model = ScenarioModel(EnergyEfficientPlanner());
+            % -------------------------------------------------
             obj.renderer = ScenarioRenderer(obj.ax);
             obj.controller = GraphEditController(obj.model, obj.renderer, @(m)obj.setStatus(m));
             obj.objectiveWin = ObjectivePlotWindow();
