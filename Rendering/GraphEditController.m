@@ -49,8 +49,7 @@ classdef GraphEditController < handle
                     obj.model.addTarget(snappedPos);
                     obj.renderer.renderAll(obj.model);
                 case "addAgent"
-                    selectedType = "Energy"; 
-                    [~, ok, msg] = obj.model.addAgentOnTarget(pos, agentSpeed, obj.clickTol, selectedType);
+                    [~, ok, msg] = obj.model.addAgentOnTarget(pos, agentSpeed, obj.clickTol);
                     if ~ok && msg ~= ""
                         obj.say(msg);
                         return;

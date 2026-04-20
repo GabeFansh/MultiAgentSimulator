@@ -3,25 +3,40 @@ classdef ScenarioModel < handle
         agents = []
         targets = Target.empty
         edges = Edge.empty
-        walls = [] 
+        walls = []
         cumUncertaintyIntegral = 0
         lastLogTime = 0
         lastUncertainty = 0
         hasLastSample = false
-        policyMap
+        policy
         pathPlanner
+        agentFactory
         bounds = [0 100 0 100]  % [xMin xMax yMin yMax]
     end
 
     methods
-        function obj = ScenarioModel(pathPlanner)
-            obj.policyMap = containers.Map('KeyType','char','ValueType','any');
-            obj.policyMap('Default') = RandomWalkPolicy();
-            obj.policyMap('Energy') = BatteryEfficientPolicy();
-            if nargin < 1 || isempty(pathPlanner)
-                pathPlanner = DijkstraCornerPlanner();
+        function obj = ScenarioModel(pathPlanner, policy, agentFactory)
+            if nargin < 1 || isempty(pathPlanner), pathPlanner = DijkstraCornerPlanner(); end
+            if nargin < 2 || isempty(policy),      policy = RandomWalkPolicy(); end
+            if nargin < 3 || isempty(agentFactory)
+                agentFactory = @(idx, pos, sp) DefaultAgent(idx, pos, sp);
             end
-            obj.pathPlanner = pathPlanner;
+            obj.pathPlanner  = pathPlanner;
+            obj.policy       = policy;
+            obj.agentFactory = agentFactory;
+        end
+
+        function setPathPlanner(obj, planner)
+            obj.pathPlanner = planner;
+            obj.replanAllEdges();
+        end
+
+        function setPolicy(obj, policy)
+            obj.policy = policy;
+        end
+
+        function setAgentFactory(obj, factory)
+            obj.agentFactory = factory;
         end
 
         function addWall(obj, p1, p2)
@@ -50,9 +65,8 @@ classdef ScenarioModel < handle
                     continue;
                 end
                 if isempty(a.path)
-                    pol = obj.getPolicyForAgent(a);
                     adj = obj.buildAdjacency();
-                    cmd = pol.plan(a, obj, adj, a.current_target_idx, simTime);
+                    cmd = obj.policy.plan(a, obj, adj, a.current_target_idx, simTime);
                     if ~isempty(cmd) && strcmp(cmd.kind, "move")
                         edge = obj.findEdge(a.current_target_idx, cmd.targetIdx);
                         if ~isempty(edge)
@@ -137,15 +151,11 @@ classdef ScenarioModel < handle
             obj.targets(end+1) = t;
         end
 
-        function [a, ok, msg] = addAgentOnTarget(obj, clickPos, speed, tol, type)
+        function [a, ok, msg] = addAgentOnTarget(obj, clickPos, speed, tol)
             a = []; ok = false; msg = "";
             [tIdx, dist] = obj.findNearestTarget(clickPos);
             if isempty(tIdx) || dist > tol, msg = "Click near target"; return; end
-            if nargin > 4 && strcmpi(type, "Energy")
-                a = EnergyAgent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
-            else
-                a = DefaultAgent(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
-            end
+            a = obj.agentFactory(numel(obj.agents)+1, obj.targets(tIdx).position, speed);
             a.current_target_idx = tIdx;
             a.initialTargetIdx = tIdx;
             a.initialPosition = a.state.pos;
@@ -188,12 +198,5 @@ classdef ScenarioModel < handle
             end
         end
 
-        function pol = getPolicyForAgent(obj, a)
-            if isprop(a, 'type') && obj.policyMap.isKey(a.type)
-                pol = obj.policyMap(a.type);
-            else
-                pol = obj.policyMap('Default');
-            end
-        end
     end
 end

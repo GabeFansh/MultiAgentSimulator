@@ -9,6 +9,10 @@ classdef MainUI < handle
         endTimeField
         dtField
         timeScaleSlider
+        plannerDropdown
+        policyDropdown
+        agentTypeDropdown
+        registry
         model
         renderer
         controller
@@ -21,10 +25,15 @@ classdef MainUI < handle
 
     methods
         function obj = MainUI()
+            obj.registry = ComponentRegistry();
             obj.buildUI();
-            % Edit Edge Path Planning Model Here
-            obj.model = ScenarioModel(EnergyEfficientPlanner());
-            % -------------------------------------------------
+            plannerName    = obj.plannerDropdown.Value;
+            policyName     = obj.policyDropdown.Value;
+            agentTypeName  = obj.agentTypeDropdown.Value;
+            plannerFactory = obj.registry.factoryFor('pathplanner', plannerName);
+            policyFactory  = obj.registry.factoryFor('policy',      policyName);
+            agentFactory   = obj.registry.factoryFor('agenttype',   agentTypeName);
+            obj.model = ScenarioModel(plannerFactory(), policyFactory(), agentFactory);
             obj.renderer = ScenarioRenderer(obj.ax);
             obj.controller = GraphEditController(obj.model, obj.renderer, @(m)obj.setStatus(m));
             obj.objectiveWin = ObjectivePlotWindow();
@@ -32,7 +41,8 @@ classdef MainUI < handle
             obj.sim = SimulationController(obj.model, obj.renderer, obj.clock, ...
                 @(t,tEnd)obj.setTime(t,tEnd), ...
                 @(m)obj.setStatus(m), ...
-                @(t,J)obj.objectiveWin.addPoint(t,J));
+                @(t,J)obj.objectiveWin.addPoint(t,J), ...
+                @(running)obj.onRunStateChanged(running));
             obj.fig.WindowButtonMotionFcn = @(~,~)obj.safeOnMouseMove();
             obj.controller.setMode("idle");
             obj.renderer.renderAll(obj.model);
@@ -43,8 +53,10 @@ classdef MainUI < handle
     methods (Access=private)
         function buildUI(obj)
             obj.fig = uifigure('Name','Offline Path Planner UI', ...
-                'Position', [100 100 1200 750]);
+                'Position', [100 100 1200 820]);
             obj.fig.CloseRequestFcn = @(~,~) obj.forceCloseAll();
+            cp = uipanel(obj.fig, 'Title','Modular Components', 'Position',[10 745 1180 65]);
+            obj.buildComponentsBar(cp);
             p = uipanel(obj.fig, 'Title','Tools', 'Position',[10 270 260 470]);
             tp = uipanel(obj.fig, 'Title','Time Control', 'Position',[10 10 260 250]);
             obj.ax = uiaxes(obj.fig, 'Position',[290 10 900 730]);
@@ -105,6 +117,60 @@ classdef MainUI < handle
                 'Limits',[0 10], 'Value',1, ...
                 'Position',[75 30 160 3], ...
                 'ValueChangedFcn', @(s,~)obj.sim.setTimeScale(s.Value));
+        end
+
+        function buildComponentsBar(obj, cp)
+            plannerNames   = obj.registry.keysFor('pathplanner');
+            policyNames    = obj.registry.keysFor('policy');
+            agentTypeNames = obj.registry.keysFor('agenttype');
+
+            uilabel(cp, 'Text','Path Planner:', 'Position',[10 12 100 20]);
+            obj.plannerDropdown = uidropdown(cp, ...
+                'Items', plannerNames, 'Position',[120 10 240 26], ...
+                'ValueChangedFcn', @(s,~)obj.onPlannerChanged(s.Value));
+
+            uilabel(cp, 'Text','Agent Policy:', 'Position',[400 12 100 20]);
+            obj.policyDropdown = uidropdown(cp, ...
+                'Items', policyNames, 'Position',[510 10 240 26], ...
+                'ValueChangedFcn', @(s,~)obj.onPolicyChanged(s.Value));
+
+            uilabel(cp, 'Text','Agent Type:', 'Position',[790 12 100 20]);
+            obj.agentTypeDropdown = uidropdown(cp, ...
+                'Items', agentTypeNames, 'Position',[895 10 240 26], ...
+                'ValueChangedFcn', @(s,~)obj.onAgentTypeChanged(s.Value));
+        end
+
+        function onPlannerChanged(obj, name)
+            factory = obj.registry.factoryFor('pathplanner', name);
+            obj.model.setPathPlanner(factory());
+            obj.renderer.renderAll(obj.model);
+            obj.setStatus(sprintf('Path planner: %s', name));
+        end
+
+        function onPolicyChanged(obj, name)
+            factory = obj.registry.factoryFor('policy', name);
+            obj.model.setPolicy(factory());
+            obj.setStatus(sprintf('Agent policy: %s', name));
+        end
+
+        function onAgentTypeChanged(obj, name)
+            factory = obj.registry.factoryFor('agenttype', name);
+            obj.model.setAgentFactory(factory);
+            obj.setStatus(sprintf('Agent type: %s (applies to new agents)', name));
+        end
+
+        function onRunStateChanged(obj, running)
+            state = 'on';
+            if running, state = 'off'; end
+            if ~isempty(obj.plannerDropdown) && isvalid(obj.plannerDropdown)
+                obj.plannerDropdown.Enable = state;
+            end
+            if ~isempty(obj.policyDropdown) && isvalid(obj.policyDropdown)
+                obj.policyDropdown.Enable = state;
+            end
+            if ~isempty(obj.agentTypeDropdown) && isvalid(obj.agentTypeDropdown)
+                obj.agentTypeDropdown.Enable = state;
+            end
         end
 
         function forceCloseAll(obj)
