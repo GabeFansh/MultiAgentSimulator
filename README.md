@@ -8,6 +8,28 @@ The project is designed around three **modular areas** so new algorithms can be 
 - **Agent Policy** — how an agent decides which target to go to next.
 - **Agent Type** — the agent class itself (its dynamics, state, energy model, rendering, etc.).
 
+## Examples
+
+### Main UI
+The application on launch — Modular Components bar on top, Tools panel on the left, Time Control below, canvas on the right.
+
+![Main UI overview](screenshots/overview.png)
+
+### Building a scenario
+Targets, edges, and walls drawn on the canvas before running the simulation.
+
+![Scenario with targets, edges, and walls](screenshots/scenario.png)
+
+### Simulation running
+Agents following their paths mid-simulation. The Modular Components dropdowns are locked while the sim is active.
+
+![Simulation in progress](screenshots/running.png)
+
+### Objective plot
+The objective function `J(t)` tracked over the course of a run.
+
+![Objective function over time](screenshots/objective.png)
+
 ## Running the project
 
 1. Open MATLAB and set the working directory to the repo root (`MultiAgentSimulator`).
