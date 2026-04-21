@@ -52,7 +52,7 @@ classdef MainUI < handle
 
     methods (Access=private)
         function buildUI(obj)
-            obj.fig = uifigure('Name','Offline Path Planner UI', ...
+            obj.fig = uifigure('Name','Multi-Agent Persistent Monitoring Simulator', ...
                 'Position', [100 100 1200 820]);
             obj.fig.CloseRequestFcn = @(~,~) obj.forceCloseAll();
             cp = uipanel(obj.fig, 'Title','Modular Components', 'Position',[10 745 1180 65]);
