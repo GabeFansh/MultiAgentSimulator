@@ -140,10 +140,10 @@ classdef ScenarioModel < handle
             for k = 1:size(s.targets, 1)
                 obj.addTarget(s.targets(k,:));
             end
+            if isfield(s, 'walls'), obj.walls = s.walls; end
             for k = 1:size(s.edges, 1)
                 obj.addEdgeByTargets(double(s.edges(k,1)), double(s.edges(k,2)));
             end
-            if isfield(s, 'walls'), obj.walls = s.walls; end
         end
 
         function t = addTarget(obj, pos)
