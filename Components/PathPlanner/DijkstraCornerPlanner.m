@@ -3,7 +3,7 @@ classdef DijkstraCornerPlanner < PathPlanner
         cornerBuffer double = 1.2
         wallProximity double = 0.6
         smoothingFactor double = 10
-        endpointTol double = 0.005
+        endpointTol double = 1e-6
     end
 
     methods
@@ -113,7 +113,7 @@ classdef DijkstraCornerPlanner < PathPlanner
             ua = ((d(1)-c(1))*(a(2)-c(2)) - (d(2)-c(2))*(a(1)-c(1))) / den;
             ub = ((b(1)-a(1))*(a(2)-c(2)) - (b(2)-a(2))*(a(1)-c(1))) / den;
             tol = obj.endpointTol;
-            hit = (ua > tol && ua < 1-tol && ub > tol && ub < 1-tol);
+            hit = (ua > tol && ua < 1-tol && ub >= -tol && ub <= 1+tol);
         end
 
         function idxs = dijkstra(~, adj, startNode, endNode)
