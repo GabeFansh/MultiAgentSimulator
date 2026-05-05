@@ -120,6 +120,9 @@ classdef ScenarioRenderer < handle
                     hold(obj.ax, 'off');
                 end
             end
+            if ~isempty(obj.bgImageHandle) && isgraphics(obj.bgImageHandle)
+                uistack(obj.bgImageHandle, 'bottom');
+            end
         end
     end
 end
